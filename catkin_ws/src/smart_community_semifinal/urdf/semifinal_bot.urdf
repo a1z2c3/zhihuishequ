@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<robot name="semifinal_bot">
+  <!-- Kinematic planar-drive simulation, not a validated mecanum contact model. -->
+  <link name="base_footprint"/>
+  <link name="base_link">
+    <inertial><mass value="5.2"/><inertia ixx=".045" ixy="0" ixz="0" iyy=".05" iyz="0" izz=".088"/></inertial>
+    <visual><geometry><box size=".334 .303 .12"/></geometry><material name="body"><color rgba=".1 .25 .35 1"/></material></visual>
+    <collision><geometry><box size=".334 .303 .12"/></geometry></collision>
+  </link>
+  <joint name="base_joint" type="fixed"><parent link="base_footprint"/><child link="base_link"/><origin xyz="0 0 .06"/></joint>
+  <link name="laser_link"><inertial><mass value=".05"/><inertia ixx=".0001" ixy="0" ixz="0" iyy=".0001" iyz="0" izz=".0001"/></inertial>
+    <visual><geometry><cylinder radius=".025" length=".02"/></geometry></visual></link>
+  <joint name="laser_joint" type="fixed"><parent link="base_link"/><child link="laser_link"/><origin xyz="0 0 .065"/></joint>
+  <link name="camera_link"><inertial><mass value=".05"/><inertia ixx=".0001" ixy="0" ixz="0" iyy=".0001" iyz="0" izz=".0001"/></inertial>
+    <visual><geometry><box size=".03 .065 .025"/></geometry></visual></link>
+  <joint name="camera_joint" type="fixed"><parent link="base_link"/><child link="camera_link"/><origin xyz=".155 0 .16"/></joint>
+  <link name="camera_rgb_optical_frame"/>
+  <joint name="camera_optical_joint" type="fixed"><parent link="camera_link"/><child link="camera_rgb_optical_frame"/><origin rpy="-1.570796 0 -1.570796"/></joint>
+  <gazebo reference="base_link"><material>Gazebo/Blue</material><mu1>0</mu1><mu2>0</mu2></gazebo>
+  <gazebo reference="laser_link"><sensor type="ray" name="lidar">
+    <update_rate>10</update_rate><ray><scan><horizontal><samples>720</samples><resolution>1</resolution><min_angle>-3.141593</min_angle><max_angle>3.141593</max_angle></horizontal></scan>
+    <range><min>.12</min><max>10</max><resolution>.005</resolution></range><noise><type>gaussian</type><mean>0</mean><stddev>.005</stddev></noise></ray>
+    <plugin name="laser" filename="libgazebo_ros_laser.so"><topicName>/scan</topicName><frameName>laser_link</frameName></plugin>
+  </sensor></gazebo>
+  <gazebo reference="camera_link"><sensor type="camera" name="rgb_camera">
+    <!-- Preserve 4:3 vertical coverage. 1280x720 would narrow the vertical FOV. -->
+    <update_rate>15</update_rate><camera><horizontal_fov>1.047198</horizontal_fov><image><width>1280</width><height>960</height><format>R8G8B8</format></image><clip><near>.05</near><far>8</far></clip></camera>
+    <!-- Metric card localization uses CameraInfo + known dimensions + PnP.
+         Do not render an unused depth image/point cloud in the teaching VM. -->
+    <plugin name="rgb_camera" filename="libgazebo_ros_camera.so"><cameraName>camera</cameraName><alwaysOn>true</alwaysOn><updateRate>15</updateRate><imageTopicName>color/image_raw</imageTopicName><cameraInfoTopicName>color/camera_info</cameraInfoTopicName><frameName>camera_rgb_optical_frame</frameName></plugin>
+  </sensor></gazebo>
+  <gazebo><plugin name="planar_drive" filename="libgazebo_ros_planar_move.so"><commandTopic>cmd_vel</commandTopic><odometryTopic>odom</odometryTopic><odometryFrame>odom</odometryFrame><robotBaseFrame>base_footprint</robotBaseFrame><odometryRate>30</odometryRate></plugin></gazebo>
+</robot>

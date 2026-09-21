@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<launch>
+  <arg name="gui" default="true"/>
+  <arg name="verbose" default="false"/>
+  <arg name="start_task" default="true"/>
+  <arg name="evidence_dir" default="$(optenv HOME /tmp)/semifinal_evidence_v2"/>
+  <include file="$(find smart_community_semifinal)/launch/scene.launch"><arg name="gui" value="$(arg gui)"/><arg name="verbose" value="$(arg verbose)"/></include>
+  <include file="$(find smart_community_semifinal)/launch/mapping.launch"/>
+  <include file="$(find smart_community_semifinal)/launch/perception.launch"><arg name="evidence_dir" value="$(arg evidence_dir)"/></include>
+  <include file="$(find smart_community_semifinal)/launch/guard.launch"/>
+  <node if="$(arg start_task)" pkg="smart_community_semifinal" type="patrol_node.py" name="semifinal_patrol" output="screen">
+    <param name="layout" value="$(find smart_community_semifinal)/config/layout.json"/>
+  </node>
+</launch>

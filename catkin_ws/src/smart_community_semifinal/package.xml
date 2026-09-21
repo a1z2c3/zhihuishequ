@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>smart_community_semifinal</name><version>0.2.0</version>
+  <description>Official-material semifinal reconstruction and evidence baseline</description>
+  <maintainer email="team@example.invalid">蒙的全队</maintainer><license>Proprietary</license>
+  <buildtool_depend>catkin</buildtool_depend>
+  <build_depend>gazebo_dev</build_depend>
+  <exec_depend>gazebo_ros</exec_depend><exec_depend>gazebo_plugins</exec_depend>
+  <exec_depend>rospy</exec_depend><exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend><exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>tf</exec_depend><exec_depend>nav_msgs</exec_depend>
+  <exec_depend>xacro</exec_depend><exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>joint_state_publisher</exec_depend><exec_depend>gmapping</exec_depend>
+  <exec_depend>python-numpy</exec_depend><exec_depend>python-opencv</exec_depend>
+  <exec_depend>python-pil</exec_depend><exec_depend>map_server</exec_depend>
+  <export><gazebo_ros gazebo_model_path="${prefix}/models"/></export>
+</package>

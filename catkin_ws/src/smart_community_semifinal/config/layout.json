@@ -1,0 +1,271 @@
+{
+  "schema_version": 2,
+  "field_size_m": [
+    4.2,
+    4.2
+  ],
+  "lane_width_m": 0.6,
+  "coordinate_status": "dimension_constrained_reconstruction_pending_official_coordinate_confirmation",
+  "a_polygon": [
+    [
+      0.6,
+      3.6
+    ],
+    [
+      2.85,
+      3.6
+    ],
+    [
+      2.85,
+      0.6
+    ],
+    [
+      2.25,
+      0.6
+    ],
+    [
+      2.25,
+      3.0
+    ],
+    [
+      0.6,
+      3.0
+    ]
+  ],
+  "b_polygon": [
+    [
+      0.6,
+      0.6
+    ],
+    [
+      1.65,
+      0.6
+    ],
+    [
+      1.65,
+      2.25
+    ],
+    [
+      0.6,
+      2.25
+    ]
+  ],
+  "parking_boundary_x": 3.45,
+  "parking_open_above_y": 3.6,
+  "route": [
+    {
+      "name": "start",
+      "xy": [
+        3.78,
+        3.9
+      ],
+      "yaw": 180
+    },
+    {
+      "name": "approach_light_1",
+      "xy": [
+        2.78,
+        3.9
+      ],
+      "yaw": 180,
+      "gate": "light_1"
+    },
+    {
+      "name": "past_light_1",
+      "xy": [
+        1.45,
+        3.9
+      ],
+      "yaw": 180
+    },
+    {
+      "name": "street_a_north",
+      "xy": [
+        0.9,
+        3.9
+      ],
+      "yaw": -90,
+      "street": "A",
+      "observe": true
+    },
+    {
+      "name": "top_left",
+      "xy": [
+        0.3,
+        3.9
+      ],
+      "yaw": 180
+    },
+    {
+      "name": "left_bottom",
+      "xy": [
+        0.3,
+        2.63
+      ],
+      "yaw": -90
+    },
+    {
+      "name": "street_b_west",
+      "xy": [
+        0.96,
+        2.63
+      ],
+      "yaw": -90,
+      "street": "B",
+      "observe": true
+    },
+    {
+      "name": "street_a_south",
+      "xy": [
+        1.36,
+        2.63
+      ],
+      "yaw": 90,
+      "street": "A",
+      "observe": true
+    },
+    {
+      "name": "street_b_east",
+      "xy": [
+        1.36,
+        2.63
+      ],
+      "yaw": -90,
+      "street": "B",
+      "observe": true
+    },
+    {
+      "name": "inner_turn",
+      "xy": [
+        1.95,
+        2.63
+      ],
+      "yaw": 0
+    },
+    {
+      "name": "approach_light_2",
+      "xy": [
+        1.95,
+        1.82
+      ],
+      "yaw": -90,
+      "gate": "light_2"
+    },
+    {
+      "name": "past_light_2",
+      "xy": [
+        1.95,
+        0.78
+      ],
+      "yaw": -90
+    },
+    {
+      "name": "bottom_turn",
+      "xy": [
+        1.95,
+        0.3
+      ],
+      "yaw": -90
+    },
+    {
+      "name": "right_bottom",
+      "xy": [
+        3.15,
+        0.3
+      ],
+      "yaw": 0
+    },
+    {
+      "name": "parking_1",
+      "xy": [
+        3.15,
+        0.3
+      ],
+      "yaw": 0,
+      "observe": true
+    },
+    {
+      "name": "parking_2",
+      "xy": [
+        3.15,
+        0.92
+      ],
+      "yaw": 0,
+      "observe": true
+    },
+    {
+      "name": "parking_3",
+      "xy": [
+        3.15,
+        1.54
+      ],
+      "yaw": 0,
+      "observe": true
+    },
+    {
+      "name": "right_top",
+      "xy": [
+        3.15,
+        3.9
+      ],
+      "yaw": 90
+    },
+    {
+      "name": "finish",
+      "xy": [
+        3.78,
+        3.9
+      ],
+      "yaw": 180
+    }
+  ],
+  "lights": [
+    {
+      "id": "light_1",
+      "xy": [
+        1.8,
+        3.88
+      ],
+      "yaw": 90
+    },
+    {
+      "id": "light_2",
+      "xy": [
+        1.95,
+        0.56
+      ],
+      "yaw": 180
+    }
+  ],
+  "stop_lines": [
+    {
+      "id": "light_1",
+      "point": [
+        2.44,
+        3.9
+      ],
+      "direction": [
+        -1,
+        0
+      ]
+    },
+    {
+      "id": "light_2",
+      "point": [
+        1.95,
+        1.49
+      ],
+      "direction": [
+        0,
+        -1
+      ]
+    }
+  ],
+  "assumptions": [
+    "The two diagrams are schematic and differ in proportions.",
+    "60 cm labels override pixel-derived distances.",
+    "Person artwork assignment and exact placements are illustrative, not specified by the diagram.",
+    "A arrows permit north/south/west; B arrows permit north/east. Selected card fronts are north/south for A and north for B.",
+    "Light dimensions 0.64 x 0.14 m and overall 0.48 m are official; mounting locations are reconstructed."
+  ]
+}

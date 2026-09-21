@@ -1,0 +1,4 @@
+<?xml version="1.0"?>
+<sdf version="1.6"><model name="plate_3"><static>true</static><link name="body">
+<visual name="artwork"><geometry><mesh><uri>model://plate_3/meshes/card.dae</uri></mesh></geometry><cast_shadows>false</cast_shadows></visual><collision name="card"><pose>0 0 0.015000 0 0 0</pose><geometry><box><size>0.095000 0.005 0.030000</size></box></geometry></collision>
+</link></model></sdf>

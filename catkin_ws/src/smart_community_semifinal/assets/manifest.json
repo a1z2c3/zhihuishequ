@@ -1,0 +1,223 @@
+{
+  "source": "User supplied official semifinal materials",
+  "recognition_assets": [
+    {
+      "category": "resident",
+      "label": "resident_1",
+      "file": "resident_1.png",
+      "source": "人员\\社区人员\\1.png",
+      "sha256": "3afdecda86664dbed90bd1e25f843967ed693dbfce6c80795d4e8772ccde8e82",
+      "height_m": 0.145,
+      "width_m": 0.06384943181818181,
+      "dimension_status": "approximate_from_ruler_photo_not_official_numeric_spec"
+    },
+    {
+      "category": "resident",
+      "label": "resident_10",
+      "file": "resident_10.png",
+      "source": "人员\\社区人员\\10.png",
+      "sha256": "0bb34d312acbdceb095711ce0371386a75b1017c123fcade617b267e66ac3caf",
+      "height_m": 0.145,
+      "width_m": 0.05808011049723757,
+      "dimension_status": "approximate_from_ruler_photo_not_official_numeric_spec"
+    },
+    {
+      "category": "resident",
+      "label": "resident_11",
+      "file": "resident_11.png",
+      "source": "人员\\社区人员\\11.png",
+      "sha256": "d84c0264c813d393ff724396b0f2a4a715cf3f1a7ff7dacb36b1f91d3ea40532",
+      "height_m": 0.145,
+      "width_m": 0.04900837988826815,
+      "dimension_status": "approximate_from_ruler_photo_not_official_numeric_spec"
+    },
+    {
+      "category": "resident",
+      "label": "resident_12",
+      "file": "resident_12.png",
+      "source": "人员\\社区人员\\12.png",
+      "sha256": "c07ca4f14da60875a39194359a4fa21f95947236ac6e2ce4799418aa8b9d4de0",
+      "height_m": 0.145,
+      "width_m": 0.04738826815642458,
+      "dimension_status": "approximate_from_ruler_photo_not_official_numeric_spec"
+    },
+    {
+      "category": "resident",
+      "label": "resident_13",
+      "file": "resident_13.png",
+      "source": "人员\\社区人员\\13.png",
+      "sha256": "29a644a75b8b598ecb135835ba257ea2fab3d7642797497516c5aec566402066",
+      "height_m": 0.145,
+      "width_m": 0.051464788732394365,
+      "dimension_status": "approximate_from_ruler_photo_not_official_numeric_spec"
+    },
+    {
+      "category": "resident",
+      "label": "resident_14",
+      "file": "resident_14.png",
+      "source": "人员\\社区人员\\14.png",
+      "sha256": "c481bfe1f5cc357c079a9690a1175ff3f84c531c35375fcfd90369108d429db1",
+      "height_m": 0.145,
+      "width_m": 0.052610619469026544,
+      "dimension_status": "approximate_from_ruler_photo_not_official_numeric_spec"
+    },
+    {
+      "category": "resident",
+      "label": "resident_15",
+      "file": "resident_15.png",
+      "source": "人员\\社区人员\\15.png",
+      "sha256": "c35273842b51f3397af0139754648d43a8fe5ac4dcb386761138cbe615b17f0a",
+      "height_m": 0.145,
+      "width_m": 0.05166167664670658,
+      "dimension_status": "approximate_from_ruler_photo_not_official_numeric_spec"
+    },
+    {
+      "category": "resident",
+      "label": "resident_16",
+      "file": "resident_16.png",
+      "source": "人员\\社区人员\\16.png",
+      "sha256": "a5c15c87b2c3753e73fbda1f57f1e18ccc2b82c506afa5320fb617cbb1f16949",
+      "height_m": 0.145,
+      "width_m": 0.03769113149847095,
+      "dimension_status": "approximate_from_ruler_photo_not_official_numeric_spec"
+    },
+    {
+      "category": "resident",
+      "label": "resident_2",
+      "file": "resident_2.png",
+      "source": "人员\\社区人员\\2.png",
+      "sha256": "f6661dc6507ad1fd3be4c105d0d1518d37255c1e7979376b555860feab8cba77",
+      "height_m": 0.145,
+      "width_m": 0.052394957983193276,
+      "dimension_status": "approximate_from_ruler_photo_not_official_numeric_spec"
+    },
+    {
+      "category": "resident",
+      "label": "resident_3",
+      "file": "resident_3.png",
+      "source": "人员\\社区人员\\3.png",
+      "sha256": "1b21c0bec7fd5b03e191160b548f3d9f5a43b5325b50b9fbc0f87b455442276b",
+      "height_m": 0.145,
+      "width_m": 0.06786337209302325,
+      "dimension_status": "approximate_from_ruler_photo_not_official_numeric_spec"
+    },
+    {
+      "category": "resident",
+      "label": "resident_4",
+      "file": "resident_4.png",
+      "source": "人员\\社区人员\\4.png",
+      "sha256": "ebbb01bfcf41a915ed731081a86600c96c044988079908b940aba421ec9cfdf6",
+      "height_m": 0.145,
+      "width_m": 0.06794285714285714,
+      "dimension_status": "approximate_from_ruler_photo_not_official_numeric_spec"
+    },
+    {
+      "category": "resident",
+      "label": "resident_5",
+      "file": "resident_5.png",
+      "source": "人员\\社区人员\\5.png",
+      "sha256": "84e613f0e865f6bcd0c9cd0d8a81e8349c7d69720bdd04cba8f96466bd42cc92",
+      "height_m": 0.145,
+      "width_m": 0.04596541786743516,
+      "dimension_status": "approximate_from_ruler_photo_not_official_numeric_spec"
+    },
+    {
+      "category": "resident",
+      "label": "resident_6",
+      "file": "resident_6.png",
+      "source": "人员\\社区人员\\6.png",
+      "sha256": "afff22efe970849e11ba3b41a9086a88a00dd9a6be7951e779af5841938c88c0",
+      "height_m": 0.145,
+      "width_m": 0.044421965317919074,
+      "dimension_status": "approximate_from_ruler_photo_not_official_numeric_spec"
+    },
+    {
+      "category": "resident",
+      "label": "resident_7",
+      "file": "resident_7.png",
+      "source": "人员\\社区人员\\7.png",
+      "sha256": "b6b1b745215009aeb5186e7362f0d33e8810f6e315805fb630430e2fc24b884e",
+      "height_m": 0.145,
+      "width_m": 0.055972644376899694,
+      "dimension_status": "approximate_from_ruler_photo_not_official_numeric_spec"
+    },
+    {
+      "category": "resident",
+      "label": "resident_8",
+      "file": "resident_8.png",
+      "source": "人员\\社区人员\\8.png",
+      "sha256": "1f72b111743db5d1251557254cb90a3953a6347249482b528cbc3b5bbc7bc33a",
+      "height_m": 0.145,
+      "width_m": 0.053421052631578946,
+      "dimension_status": "approximate_from_ruler_photo_not_official_numeric_spec"
+    },
+    {
+      "category": "resident",
+      "label": "resident_9",
+      "file": "resident_9.png",
+      "source": "人员\\社区人员\\9.png",
+      "sha256": "6238ac20a1ab3fa437c613708f5417388fba7bdbd18aa3db81fce8c2c0449e63",
+      "height_m": 0.145,
+      "width_m": 0.04901408450704225,
+      "dimension_status": "approximate_from_ruler_photo_not_official_numeric_spec"
+    },
+    {
+      "category": "visitor",
+      "label": "visitor_F1",
+      "file": "visitor_F1.png",
+      "source": "人员\\非社区人员\\F1.png",
+      "sha256": "9028438959546fe7330ef4e8aff41b68cb1cfd7ab38bd05acd3e80aff9226483",
+      "height_m": 0.145,
+      "width_m": 0.04806849315068493,
+      "dimension_status": "approximate_from_ruler_photo_not_official_numeric_spec"
+    },
+    {
+      "category": "visitor",
+      "label": "visitor_F2",
+      "file": "visitor_F2.png",
+      "source": "人员\\非社区人员\\F2.png",
+      "sha256": "bdc6cc46cb52d8ac0979cf0b18f399965c62d833a1853958ed1f125f5d4e26a8",
+      "height_m": 0.145,
+      "width_m": 0.06202549575070821,
+      "dimension_status": "approximate_from_ruler_photo_not_official_numeric_spec"
+    },
+    {
+      "category": "plate",
+      "label": "苏AB8Q62",
+      "file": "plate_1.png",
+      "source": "车辆识别\\车牌一.png",
+      "sha256": "dc18502836447317ca7f6566d6dce008867b88a3b39393d896776cfdec4122de",
+      "width_m": 0.095,
+      "height_m": 0.03,
+      "dimension_status": "official_text",
+      "text_status": "visually_transcribed"
+    },
+    {
+      "category": "plate",
+      "label": "鄂D7B5Q2",
+      "file": "plate_2.png",
+      "source": "车辆识别\\车牌二.png",
+      "sha256": "29cf0ff4716ce62f57a8a279e015118d31769d3c77834bb65869172857ca3081",
+      "width_m": 0.095,
+      "height_m": 0.03,
+      "dimension_status": "official_text",
+      "text_status": "visually_transcribed"
+    },
+    {
+      "category": "plate",
+      "label": "苏APL12A",
+      "file": "plate_3.png",
+      "source": "车辆识别\\车牌三.png",
+      "sha256": "18824951d39b0e23a36a180a6b7ce8a64e578d3e4aa52d43ef30cfe046f68645",
+      "width_m": 0.095,
+      "height_m": 0.03,
+      "dimension_status": "official_text",
+      "text_status": "visually_transcribed"
+    }
+  ],
+  "notes": [
+    "Known-reference baseline; plate labels are not OCR output.",
+    "Person height is a provisional reconstruction value; verify before filming.",
+    "No person roles inferred from clothing colour."
+  ]
+}

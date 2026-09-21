@@ -1,0 +1,37 @@
+<?xml version="1.0"?><sdf version="1.6"><world name="official_semifinal">
+<physics type="ode"><max_step_size>0.001</max_step_size><real_time_update_rate>200</real_time_update_rate></physics>
+<include><uri>model://sun</uri></include><include><uri>model://ground_plane</uri></include>
+<include><uri>model://official_floor</uri><pose>0 0 0.002 0 0 0</pose></include>
+<include><uri>model://resident_1</uri><name>person_00</name><pose>0.750000 3.180000 0.003000 0 0 3.141593</pose></include>
+<include><uri>model://resident_7</uri><name>person_01</name><pose>1.000000 3.180000 0.003000 0 0 3.141593</pose></include>
+<include><uri>model://visitor_F1</uri><name>person_02</name><pose>1.150000 3.400000 0.003000 0 0 0.000000</pose></include>
+<include><uri>model://resident_10</uri><name>person_03</name><pose>1.360000 3.400000 0.003000 0 0 0.000000</pose></include>
+<include><uri>model://resident_16</uri><name>person_04</name><pose>1.570000 3.400000 0.003000 0 0 0.000000</pose></include>
+<include><uri>model://resident_2</uri><name>person_05</name><pose>0.760000 1.950000 0.003000 0 0 3.141593</pose></include>
+<include><uri>model://resident_6</uri><name>person_06</name><pose>0.960000 1.950000 0.003000 0 0 3.141593</pose></include>
+<include><uri>model://resident_9</uri><name>person_07</name><pose>1.150000 1.950000 0.003000 0 0 3.141593</pose></include>
+<include><uri>model://visitor_F2</uri><name>person_08</name><pose>1.360000 1.950000 0.003000 0 0 3.141593</pose></include>
+<include><uri>model://resident_14</uri><name>person_09</name><pose>1.540000 1.950000 0.003000 0 0 3.141593</pose></include>
+<include><uri>model://car_background</uri><name>car_1</name><pose>3.840000 0.300000 0.003000 0 0 -1.570796</pose></include>
+<include><uri>model://plate_1</uri><name>plate_1</name><pose>3.833000 0.300000 0.073000 0 0 -1.570796</pose></include>
+<include><uri>model://car_background</uri><name>car_2</name><pose>3.840000 0.920000 0.003000 0 0 -1.570796</pose></include>
+<include><uri>model://plate_2</uri><name>plate_2</name><pose>3.833000 0.920000 0.073000 0 0 -1.570796</pose></include>
+<include><uri>model://car_background</uri><name>car_3</name><pose>3.840000 1.540000 0.003000 0 0 -1.570796</pose></include>
+<include><uri>model://plate_3</uri><name>plate_3</name><pose>3.833000 1.540000 0.073000 0 0 -1.570796</pose></include>
+<model name="light_1"><static>true</static><pose>1.800000 3.880000 0 0 0 1.570796</pose><link name="housing">
+<visual name="box"><pose>0 0 .41 0 0 0</pose><geometry><box><size>.64 .04 .14</size></box></geometry><material><ambient>.02 .02 .02 1</ambient><diffuse>.02 .02 .02 1</diffuse></material></visual>
+<visual name="red"><pose>-0.220000 -.025 .41 1.570796 0 0</pose><geometry><cylinder><radius>.052</radius><length>.012</length></cylinder></geometry><material><ambient>1 0 0 1</ambient><diffuse>1 0 0 1</diffuse></material></visual>
+<visual name="yellow"><pose>0.000000 -.025 .41 1.570796 0 0</pose><geometry><cylinder><radius>.052</radius><length>.012</length></cylinder></geometry><material><ambient>1 .7 0 1</ambient><diffuse>1 .7 0 1</diffuse></material></visual>
+<visual name="green"><pose>0.220000 -.025 .41 1.570796 0 0</pose><geometry><cylinder><radius>.052</radius><length>.012</length></cylinder></geometry><material><ambient>0 1 0 1</ambient><diffuse>0 1 0 1</diffuse></material></visual>
+<visual name="leg_-0.29"><pose>-0.290000 0 .17 0 0 0</pose><geometry><box><size>.025 .025 .34</size></box></geometry></visual><collision name="leg_-0.29"><pose>-0.290000 0 .17 0 0 0</pose><geometry><box><size>.025 .025 .34</size></box></geometry></collision>
+<visual name="leg_0.29"><pose>0.290000 0 .17 0 0 0</pose><geometry><box><size>.025 .025 .34</size></box></geometry></visual><collision name="leg_0.29"><pose>0.290000 0 .17 0 0 0</pose><geometry><box><size>.025 .025 .34</size></box></geometry></collision>
+</link><plugin name="signal_cycle" filename="libsemifinal_signal.so"><offset>0</offset></plugin></model>
+<model name="light_2"><static>true</static><pose>1.950000 0.560000 0 0 0 3.141593</pose><link name="housing">
+<visual name="box"><pose>0 0 .41 0 0 0</pose><geometry><box><size>.64 .04 .14</size></box></geometry><material><ambient>.02 .02 .02 1</ambient><diffuse>.02 .02 .02 1</diffuse></material></visual>
+<visual name="red"><pose>-0.220000 -.025 .41 1.570796 0 0</pose><geometry><cylinder><radius>.052</radius><length>.012</length></cylinder></geometry><material><ambient>1 0 0 1</ambient><diffuse>1 0 0 1</diffuse></material></visual>
+<visual name="yellow"><pose>0.000000 -.025 .41 1.570796 0 0</pose><geometry><cylinder><radius>.052</radius><length>.012</length></cylinder></geometry><material><ambient>1 .7 0 1</ambient><diffuse>1 .7 0 1</diffuse></material></visual>
+<visual name="green"><pose>0.220000 -.025 .41 1.570796 0 0</pose><geometry><cylinder><radius>.052</radius><length>.012</length></cylinder></geometry><material><ambient>0 1 0 1</ambient><diffuse>0 1 0 1</diffuse></material></visual>
+<visual name="leg_-0.29"><pose>-0.290000 0 .17 0 0 0</pose><geometry><box><size>.025 .025 .34</size></box></geometry></visual><collision name="leg_-0.29"><pose>-0.290000 0 .17 0 0 0</pose><geometry><box><size>.025 .025 .34</size></box></geometry></collision>
+<visual name="leg_0.29"><pose>0.290000 0 .17 0 0 0</pose><geometry><box><size>.025 .025 .34</size></box></geometry></visual><collision name="leg_0.29"><pose>0.290000 0 .17 0 0 0</pose><geometry><box><size>.025 .025 .34</size></box></geometry></collision>
+</link><plugin name="signal_cycle" filename="libsemifinal_signal.so"><offset>7</offset></plugin></model>
+</world></sdf>

@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<launch>
+  <arg name="gui" default="true"/>
+  <arg name="verbose" default="false"/>
+  <env name="GAZEBO_MODEL_PATH" value="$(find smart_community_semifinal)/models:$(optenv GAZEBO_MODEL_PATH)"/>
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="world_name" value="$(find smart_community_semifinal)/worlds/official_semifinal.world"/>
+    <arg name="gui" value="$(arg gui)"/><arg name="use_sim_time" value="true"/>
+    <arg name="verbose" value="$(arg verbose)"/>
+  </include>
+  <param name="robot_description" textfile="$(find smart_community_semifinal)/urdf/semifinal_bot.urdf"/>
+  <node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher"/>
+  <node pkg="gazebo_ros" type="spawn_model" name="spawn_semifinal_bot" args="-urdf -param robot_description -model semifinal_bot -x 3.78 -y 3.9 -z .003 -Y 3.141593"/>
+</launch>

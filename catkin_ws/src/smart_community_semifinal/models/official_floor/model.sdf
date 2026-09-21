@@ -1,0 +1,4 @@
+<?xml version="1.0"?>
+<sdf version="1.6"><model name="official_floor"><static>true</static><link name="body">
+<visual name="artwork"><geometry><mesh><uri>model://official_floor/meshes/card.dae</uri></mesh></geometry><cast_shadows>false</cast_shadows></visual>
+</link></model></sdf>

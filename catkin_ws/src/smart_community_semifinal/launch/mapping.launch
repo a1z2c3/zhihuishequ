@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<launch>
+  <!-- Observation map only; floor tape is not a laser obstacle. -->
+  <node pkg="gmapping" type="slam_gmapping" name="slam_gmapping" output="screen">
+    <param name="base_frame" value="base_footprint"/><param name="odom_frame" value="odom"/>
+    <param name="map_frame" value="map"/><param name="delta" value=".02"/>
+    <param name="maxUrange" value="8"/><param name="maxRange" value="10"/>
+    <param name="particles" value="50"/><param name="linearUpdate" value=".04"/>
+    <param name="angularUpdate" value=".06"/><param name="temporalUpdate" value="1"/>
+    <!-- Small-field simulation tuning. The planar plugin has ideal odometry;
+         these noise values are not calibrated real-wheel parameters. -->
+    <param name="srr" value=".0002"/><param name="srt" value=".0002"/>
+    <param name="str" value=".0002"/><param name="stt" value=".0002"/>
+    <param name="lstep" value=".005"/><param name="astep" value=".005"/>
+    <param name="sigma" value=".025"/><param name="lsigma" value=".025"/>
+    <param name="xmin" value="-1"/><param name="ymin" value="-1"/>
+    <param name="xmax" value="5"/><param name="ymax" value="5"/>
+  </node>
+</launch>

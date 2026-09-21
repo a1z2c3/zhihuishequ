@@ -1,0 +1,4 @@
+<?xml version="1.0"?>
+<sdf version="1.6"><model name="resident_15"><static>true</static><link name="body">
+<visual name="artwork"><geometry><mesh><uri>model://resident_15/meshes/card.dae</uri></mesh></geometry><cast_shadows>false</cast_shadows></visual><collision name="card"><pose>0 0 0.072500 0 0 0</pose><geometry><box><size>0.051662 0.005 0.145000</size></box></geometry></collision>
+</link></model></sdf>

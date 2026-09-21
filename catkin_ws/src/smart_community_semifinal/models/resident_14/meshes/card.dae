@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<COLLADA xmlns="http://www.collada.org/2005/11/COLLADASchema" version="1.4.1">
+<asset><unit name="meter" meter="1"/><up_axis>Z_UP</up_axis></asset>
+<library_images><image id="image"><init_from>../materials/textures/texture.png</init_from></image></library_images>
+<library_effects><effect id="fx"><profile_COMMON>
+<newparam sid="surface"><surface type="2D"><init_from>image</init_from></surface></newparam>
+<newparam sid="sampler"><sampler2D><source>surface</source></sampler2D></newparam>
+<technique sid="common"><lambert><diffuse><texture texture="sampler" texcoord="UVMap"/></diffuse></lambert></technique>
+</profile_COMMON></effect></library_effects>
+<library_materials><material id="mat"><instance_effect url="#fx"/></material></library_materials>
+<library_geometries><geometry id="plane"><mesh>
+<source id="pos"><float_array id="pos-array" count="12">-0.026305309734513272 0 0 0.026305309734513272 0 0 0.026305309734513272 0 0.145 -0.026305309734513272 0 0.145</float_array><technique_common><accessor source="#pos-array" count="4" stride="3"><param name="X" type="float"/><param name="Y" type="float"/><param name="Z" type="float"/></accessor></technique_common></source>
+<source id="uv"><float_array id="uv-array" count="8">0 0 1 0 1 1 0 1</float_array><technique_common><accessor source="#uv-array" count="4" stride="2"><param name="S" type="float"/><param name="T" type="float"/></accessor></technique_common></source>
+<vertices id="verts"><input semantic="POSITION" source="#pos"/></vertices>
+<triangles count="2" material="material"><input semantic="VERTEX" source="#verts" offset="0"/><input semantic="TEXCOORD" source="#uv" offset="1" set="0"/><p>0 0 1 1 2 2 0 0 2 2 3 3</p></triangles>
+</mesh></geometry></library_geometries>
+<library_visual_scenes><visual_scene id="scene"><node><instance_geometry url="#plane"><bind_material><technique_common><instance_material symbol="material" target="#mat"><bind_vertex_input semantic="UVMap" input_semantic="TEXCOORD" input_set="0"/></instance_material></technique_common></bind_material></instance_geometry></node></visual_scene></library_visual_scenes>
+<scene><instance_visual_scene url="#scene"/></scene></COLLADA>

@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<launch>
+  <node pkg="smart_community_semifinal" type="traffic_guard_node.py" name="traffic_guard" output="screen">
+    <param name="layout" value="$(find smart_community_semifinal)/config/layout.json"/>
+    <param name="world" value="$(find smart_community_semifinal)/worlds/official_semifinal.world"/>
+  </node>
+</launch>
