@@ -1,0 +1,19 @@
+# Python 编译产物
+__pycache__/
+*.py[cod]
+*.pyo
+
+# 校验/调试临时输出
+validate_tmp/
+
+# 编辑器与系统文件
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# ROS / catkin 构建产物
+catkin_ws/build/
+catkin_ws/devel/
+catkin_ws/logs/

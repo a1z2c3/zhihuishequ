@@ -48,8 +48,12 @@ class Task(object):
                     if not -.1<=now-stamp.to_sec()<.4:raise ValueError('waiting_for_localization')
                     xyz,q=self.listener.lookupTransform('map','base_footprint',stamp)
                     pose=(xyz[0],xyz[1],tf.transformations.euler_from_quaternion(q)[2])
-                    ready=self.guard.get('entry_ready',False) and self.guard.get('stop_id')==target.get('gate') and 0<=now-self.guard.get('stamp',-1)<.3
-                    speed,omega=self.core.step(pose,now,ready);command.linear.x=speed;command.angular.z=omega
+                    guard=dict(self.guard)
+                    if not 0<=now-guard.get('stamp',-1)<.3:
+                        guard={}
+                    ready=guard.get('entry_ready',False) and guard.get('stop_id')==target.get('gate')
+                    speed,lateral,omega=self.core.step(pose,now,ready,guard)
+                    command.linear.x=speed;command.linear.y=lateral;command.angular.z=omega
                 except (tf.Exception,ValueError) as exc:reason=str(exc)
                 target=self.core.target
                 context={'active':self.core.phase=='observe','view':target['name'],'street':target.get('street'),'stamp':now,'index':self.core.index}

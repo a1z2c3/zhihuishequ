@@ -41,6 +41,66 @@ def braking_distance(speed, latency=0.25, deceleration=0.35, buffer=0.03):
     return v * latency + v * v / (2 * deceleration) + buffer
 
 
+def scan_clearance(scan, speed):
+    """Classify a scan against the candidate inflated-body corridors.
+
+    A side is free only if the whole robot footprint after a bounded 0.09 m
+    sidestep is clear.  This distinguishes an empty side sector from a
+    centered obstacle that overlaps both legal corridors.  The scan object is
+    intentionally duck-typed so the function works in offline tests too.
+    """
+    body_half_width = .303 / 2 + .02
+    avoid_shift = .09
+    side_safety = .012
+    forward = False
+    obstacle_ahead = False
+    left_blocked = False
+    right_blocked = False
+    # Remaining clearance to the lane edge after the bounded sidestep and
+    # the inflated footprint.  This is also the truthful default when no
+    # return is present in a sector.
+    lane_clearance = max(0., .6 / 2 - avoid_shift - body_half_width - side_safety)
+    left_min = right_min = lane_clearance
+    stop_horizon = .187 + braking_distance(max(abs(speed), .08))
+    half = body_half_width + side_safety
+    for i, distance in enumerate(scan.ranges):
+        if not isfinite(distance) or not scan.range_min < distance < scan.range_max:
+            continue
+        angle = scan.angle_min + i * scan.angle_increment
+        x = distance * math.cos(angle)
+        y = distance * math.sin(angle)
+        if x <= 0 or x >= .65:
+            continue
+        if x < stop_horizon and abs(y) <= body_half_width:
+            forward = True
+        # Keep the obstacle in the avoidance lane until its full body has
+        # passed the robot.  A narrow forward-only test would go false as
+        # soon as the robot sidesteps beside the box, causing an unsafe
+        # immediate recenter into the box.
+        if abs(y) <= body_half_width + avoid_shift + .05:
+            obstacle_ahead = True
+        left_distance = abs(y - avoid_shift) - half
+        right_distance = abs(y + avoid_shift) - half
+        if left_distance <= 0:
+            left_blocked = True
+            left_min = 0.
+        else:
+            left_min = min(left_min, left_distance)
+        if right_distance <= 0:
+            right_blocked = True
+            right_min = 0.
+        else:
+            right_min = min(right_min, right_distance)
+    return {
+        "forward_obstacle": forward,
+        "obstacle_ahead": obstacle_ahead,
+        "left_free": not left_blocked,
+        "right_free": not right_blocked,
+        "left_clearance": left_min,
+        "right_clearance": right_min,
+    }
+
+
 class GreenGate(object):
     """A clock prediction can never replace fresh visual evidence.
 

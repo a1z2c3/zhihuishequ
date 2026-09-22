@@ -138,7 +138,7 @@ rosrun smart_community_semifinal patrol_node.py \
 
 ## 刚才跑的 batch1_run6
 
-以下数字重新读取自 `batch1_run6.tar.gz` 中的原始评价记录和图像事件，未使用上一轮 218.55 秒的结果。
+以下数字重新读取自 `batch1_run6.tar.gz` 中的原始评价记录和图像事件，未使用上一轮 218.55 秒的结果。该归档位于原工程的运行记录目录，不随本代码文件夹分发。
 
 | 项目 | 本圈记录 |
 |---|---|

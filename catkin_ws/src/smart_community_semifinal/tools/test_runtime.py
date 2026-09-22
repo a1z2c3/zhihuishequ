@@ -11,7 +11,7 @@ from image_geometry import planar_position,decode_image
 from signal_locator import locate_signal
 from traffic_detector_core import detect_signal
 from scene_geometry import body_violation,physical_obstacles
-from semifinal_core import StreetLedger,EvidenceWriter,front_clearance
+from semifinal_core import StreetLedger,EvidenceWriter,front_clearance,scan_clearance
 from runtime_compat import monotonic,isfinite
 
 
@@ -87,9 +87,48 @@ class RuntimeContracts(unittest.TestCase):
 
     def test_persistent_blocked_motion_fails_explicitly(self):
         p=Patrol([{'name':'goal','xy':[1,0],'yaw':0}])
-        p.step((0,0,0),0);v,w=p.step((0,0,0),26)
+        p.step((0,0,0),0);v,vy,w=p.step((0,0,0),41)
         self.assertEqual(p.phase,'failed');self.assertEqual(p.error,'motion_stalled:goal')
-        self.assertEqual((v,w),(0.,0.))
+        self.assertEqual((v,vy,w),(0.,0.,0.))
+
+    def test_centered_scan_blocks_both_candidate_corridors(self):
+        class Scan:pass
+        scan=Scan();scan.ranges=[.22];scan.angle_min=0.;scan.angle_increment=0.
+        scan.range_min=.02;scan.range_max=8.
+        result=scan_clearance(scan,.18)
+        self.assertTrue(result['forward_obstacle'])
+        self.assertFalse(result['left_free']);self.assertFalse(result['right_free'])
+
+    def test_offset_scan_leaves_only_opposite_corridor(self):
+        class Scan:pass
+        scan=Scan();scan.ranges=[math.hypot(.22,-.24)];scan.angle_min=math.atan2(-.24,.22)
+        scan.angle_increment=0.;scan.range_min=.02;scan.range_max=8.
+        result=scan_clearance(scan,.18)
+        self.assertTrue(result['left_free']);self.assertFalse(result['right_free'])
+
+    def test_blocked_obstacle_pauses_stall_watchdog(self):
+        p=Patrol([{'name':'goal','xy':[1,0],'yaw':0}])
+        p.step((0,0,0),0)
+        blocked={'forward_obstacle':True,'left_free':False,'right_free':False}
+        for t in [1.,20.,41.,80.]:
+            result=p.step((0,0,0),t,guard=blocked)
+            self.assertEqual(result,(0.,0.,0.));self.assertEqual(p.phase,'travel')
+        result=p.step((.1,0,0),81.,guard={})
+        self.assertEqual(p.phase,'travel');self.assertGreater(result[0],0.)
+
+    def test_lateral_avoidance_requires_clear_scan_then_recenters(self):
+        p=Patrol([{'name':'goal','xy':[1,0],'yaw':0}])
+        p.step((0,0,0),0)
+        open_left={'forward_obstacle':True,'left_free':True,'right_free':False}
+        for t in [1.,1.1,1.2]:p.step((0,0,0),t,guard=open_left)
+        self.assertEqual(p.phase,'avoid')
+        self.assertGreater(p.step((0,.03,0),1.3,guard=open_left)[1],0.)
+        self.assertGreater(p.step((0,.09,0),2.5,guard=open_left)[0],0.)
+        self.assertEqual(p.phase,'avoid')
+        self.assertLess(p.step((0,.09,0),2.8,guard={'forward_obstacle':False,'left_free':True,'right_free':True})[1],0.)
+        self.assertEqual(p.phase,'recenter')
+        self.assertGreater(p.step((0,.01,0),4.0,guard={})[0],0.)
+        self.assertEqual(p.phase,'travel')
 
     def test_image_padding_and_rgb_order(self):
         class Msg:pass
@@ -128,13 +167,21 @@ class RuntimeContracts(unittest.TestCase):
             state='red' if phase<10 else 'green' if phase<25 else 'yellow'
             if policy.stop:policy.signal({'light_id':armed,'state':state,'confidence':1.,'stamp':t},t)
             if core.phase=='observe':core.record_frame(target['name'],t,1)
-            v,w=core.step(pose,t,policy.ready(t));v,w=policy.filter(pose,v,w,t)
+            v,vy,w=core.step(pose,t,policy.ready(t));v,w=policy.filter(pose,v,w,t)
             pose[0]+=v*math.cos(pose[2])*dt;pose[1]+=v*math.sin(pose[2])*dt;pose[2]+=w*dt
             self.assertIsNone(body_violation(pose,layout,obstacles),'%s %s'%(target['name'],pose))
             self.assertIsNone(policy.failure)
             if core.phase=='done':break
         self.assertEqual(core.phase,'done')
         self.assertEqual(len(visited),len(layout['route']))
+
+    def test_physical_obstacles_expand_world_includes(self):
+        world=os.path.join(PKG,'worlds','official_semifinal.world')
+        obstacles=physical_obstacles(world)
+        names=set(item['name'] for item in obstacles)
+        self.assertIn('person_00/card',names)
+        self.assertIn('car_1/card',names)
+        self.assertIn('light_1/leg_-0.29',names)
 
 
 if __name__=='__main__':unittest.main(verbosity=2)

@@ -3,6 +3,7 @@
 """Camera projection and body/obstacle checks, independent of ROS and truth topics."""
 from __future__ import division, unicode_literals
 import math
+import os
 import xml.etree.ElementTree as ET
 import numpy as np
 from semifinal_core import footprint_corners
@@ -84,20 +85,95 @@ def rule_boxes(layout):
 def rectangle(x1,y1,x2,y2):return [(x1,y1),(x2,y1),(x2,y2),(x1,y2)]
 
 
-def physical_obstacles(world_path,robot_height=.24):
-    root=ET.parse(world_path).getroot();obstacles=[]
-    for model in root.findall('.//world/model'):
-        pose=[float(v) for v in model.findtext('pose','0 0 0 0 0 0').split()]
-        for collision in model.findall('.//collision'):
+def _pose(text):
+    values=[float(v) for v in (text or '0 0 0 0 0 0').split()]
+    if len(values)!=6:
+        raise ValueError('SDF pose must have six values')
+    return values
+
+
+def _compose(parent,local):
+    """Compose the planar part of two SDF poses.
+
+    The official scene only uses yaw, but composing x/y as well as yaw keeps
+    included models correct when a link or collision is moved off its origin.
+    """
+    co,si=math.cos(parent[5]),math.sin(parent[5])
+    return [parent[0]+co*local[0]-si*local[1],
+            parent[1]+si*local[0]+co*local[1],
+            parent[2]+local[2],0.,0.,parent[5]+local[5]]
+
+
+def _collision_obstacles(model,model_pose,name,robot_height):
+    """Yield low box collisions from one parsed SDF model."""
+    for link in model.findall('./link'):
+        link_pose=_pose(link.findtext('pose'))
+        for collision in link.findall('.//collision'):
             size=collision.findtext('geometry/box/size')
-            if size is None:continue
+            if size is None:
+                continue
             dims=[float(v) for v in size.split()]
-            local=[float(v) for v in collision.findtext('pose','0 0 0 0 0 0').split()]
-            if pose[2]+local[2]-dims[2]/2>robot_height:continue
-            co,si=math.cos(pose[5]),math.sin(pose[5])
-            x=pose[0]+co*local[0]-si*local[1];y=pose[1]+si*local[0]+co*local[1]
-            poly=footprint_corners(x,y,pose[5]+local[5],dims[0],dims[1],0)
-            obstacles.append({'name':model.get('name')+'/'+collision.get('name'),'polygon':poly})
+            if len(dims)!=3 or min(dims)<=0:
+                continue
+            collision_pose=_compose(model_pose,
+                                    _compose(link_pose,_pose(collision.findtext('pose'))))
+            # Ignore overhead geometry only when its entire bottom is above
+            # the robot.  Cards and the low part of cars remain physical.
+            if collision_pose[2]-dims[2]/2>robot_height:
+                continue
+            poly=footprint_corners(collision_pose[0],collision_pose[1],
+                                   collision_pose[5],dims[0],dims[1],0)
+            yield {'name':name+'/'+(collision.get('name') or 'collision'),
+                   'polygon':poly}
+
+
+def physical_obstacles(world_path,robot_height=.24):
+    """Return every low box collision in inline and included world models.
+
+    Gazebo worlds commonly use ``<include><uri>model://...`` rather than
+    embedding the model SDF.  The old implementation only inspected inline
+    ``<model>`` elements, which silently omitted every person, car and plate
+    from the independent body guard.  Resolving model:// URIs relative to the
+    package's sibling ``models`` directory keeps this check independent of
+    Gazebo's runtime model path while retaining a conservative fallback when a
+    third-party model is unavailable.
+    """
+    root=ET.parse(world_path).getroot();obstacles=[]
+    world=root.find('./world')
+    if world is None:
+        return obstacles
+
+    # Embedded models (for example the signal poles).
+    for model in world.findall('./model'):
+        model_pose=_pose(model.findtext('pose'))
+        obstacles.extend(_collision_obstacles(model,model_pose,
+                                               model.get('name') or 'model',
+                                               robot_height))
+
+    models_dir=os.path.normpath(os.path.join(os.path.dirname(world_path),'..','models'))
+    for include in world.findall('./include'):
+        uri=(include.findtext('uri') or '').strip()
+        if not uri.startswith('model://'):
+            continue
+        model_id=uri[len('model://'):].strip('/')
+        if not model_id or '/' in model_id:
+            continue
+        sdf_path=os.path.join(models_dir,model_id,'model.sdf')
+        if not os.path.isfile(sdf_path):
+            continue
+        try:
+            sdf_root=ET.parse(sdf_path).getroot()
+            model=sdf_root.find('./model')
+            if model is None:
+                continue
+            include_pose=_pose(include.findtext('pose'))
+            model_pose=_compose(include_pose,_pose(model.findtext('pose')))
+            instance=include.findtext('name') or model.get('name') or model_id
+            obstacles.extend(_collision_obstacles(model,model_pose,instance,
+                                                   robot_height))
+        except (IOError, OSError, ET.ParseError, ValueError):
+            # A missing optional Gazebo asset must not stop the safety node.
+            continue
     return obstacles
 
 

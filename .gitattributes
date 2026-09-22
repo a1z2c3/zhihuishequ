@@ -1,0 +1,14 @@
+# 仓库内一律存 LF；Windows 上 checkout 也不转成 CRLF。
+# 本项目的 .sh 必须保持 LF，否则 Linux 下 `bash setup_and_check.sh` 会报
+# "set: 无效选项"（CRLF 行尾导致）。
+* text=auto eol=lf
+
+# 二进制文件不做任何换行转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.pgm binary
+*.pcd binary
+*.dae binary
+*.stl binary
+*.zip binary
