@@ -6,7 +6,9 @@ import math
 import os
 import xml.etree.ElementTree as ET
 import numpy as np
-from semifinal_core import footprint_corners
+from semifinal_core import (footprint_corners, BODY_LENGTH, BODY_WIDTH,
+                            FOOTPRINT_MARGIN, integrate_twist_pose)
+from runtime_compat import isfinite
 
 
 def camera_from_urdf(path):
@@ -76,10 +78,22 @@ def polygons_overlap(a,b):
 
 def rule_boxes(layout):
     # Decompose the concave L-shaped A island for a valid convex SAT check.
-    a=layout['a_polygon'];b=np.asarray(layout['b_polygon'])
-    return [(a[0][0],a[-1][1],a[1][0],a[0][1]),(a[4][0],a[3][1],a[2][0],a[4][1]),
-            (float(b[:,0].min()),float(b[:,1].min()),float(b[:,0].max()),float(b[:,1].max())),
-            (layout['parking_boundary_x'],0,4.2,layout['parking_open_above_y'])]
+    boxes=[]
+    a=layout.get('a_polygon')
+    b=layout.get('b_polygon')
+    field=layout.get('field_size_m',[4.2,4.2])
+    width,height=float(field[0]),float(field[1])
+    if a:
+        boxes.extend([(a[0][0],a[-1][1],a[1][0],a[0][1]),
+                      (a[4][0],a[3][1],a[2][0],a[4][1])])
+    if b:
+        b=np.asarray(b)
+        boxes.append((float(b[:,0].min()),float(b[:,1].min()),
+                      float(b[:,0].max()),float(b[:,1].max())))
+    if 'parking_boundary_x' in layout and 'parking_open_above_y' in layout:
+        boxes.append((layout['parking_boundary_x'],0,width,
+                      layout['parking_open_above_y']))
+    return boxes
 
 
 def rectangle(x1,y1,x2,y2):return [(x1,y1),(x2,y1),(x2,y2),(x1,y2)]
@@ -87,17 +101,12 @@ def rectangle(x1,y1,x2,y2):return [(x1,y1),(x2,y1),(x2,y2),(x1,y2)]
 
 def _pose(text):
     values=[float(v) for v in (text or '0 0 0 0 0 0').split()]
-    if len(values)!=6:
-        raise ValueError('SDF pose must have six values')
+    if len(values)!=6:raise ValueError('SDF pose must have six values')
     return values
 
 
 def _compose(parent,local):
-    """Compose the planar part of two SDF poses.
-
-    The official scene only uses yaw, but composing x/y as well as yaw keeps
-    included models correct when a link or collision is moved off its origin.
-    """
+    """Compose planar SDF poses, including link/collision offsets."""
     co,si=math.cos(parent[5]),math.sin(parent[5])
     return [parent[0]+co*local[0]-si*local[1],
             parent[1]+si*local[0]+co*local[1],
@@ -105,83 +114,189 @@ def _compose(parent,local):
 
 
 def _collision_obstacles(model,model_pose,name,robot_height):
-    """Yield low box collisions from one parsed SDF model."""
     for link in model.findall('./link'):
         link_pose=_pose(link.findtext('pose'))
         for collision in link.findall('.//collision'):
             size=collision.findtext('geometry/box/size')
-            if size is None:
-                continue
+            if size is None:continue
             dims=[float(v) for v in size.split()]
-            if len(dims)!=3 or min(dims)<=0:
-                continue
+            if len(dims)!=3 or min(dims)<=0:continue
             collision_pose=_compose(model_pose,
                                     _compose(link_pose,_pose(collision.findtext('pose'))))
-            # Ignore overhead geometry only when its entire bottom is above
-            # the robot.  Cards and the low part of cars remain physical.
-            if collision_pose[2]-dims[2]/2>robot_height:
-                continue
+            # Ignore only geometry entirely above the robot body.
+            if collision_pose[2]-dims[2]/2>robot_height:continue
             poly=footprint_corners(collision_pose[0],collision_pose[1],
                                    collision_pose[5],dims[0],dims[1],0)
-            yield {'name':name+'/'+(collision.get('name') or 'collision'),
-                   'polygon':poly}
+            obstacles_name=name+'/'+(collision.get('name') or 'collision')
+            yield {'name':obstacles_name,'polygon':poly}
 
 
 def physical_obstacles(world_path,robot_height=.24):
-    """Return every low box collision in inline and included world models.
-
-    Gazebo worlds commonly use ``<include><uri>model://...`` rather than
-    embedding the model SDF.  The old implementation only inspected inline
-    ``<model>`` elements, which silently omitted every person, car and plate
-    from the independent body guard.  Resolving model:// URIs relative to the
-    package's sibling ``models`` directory keeps this check independent of
-    Gazebo's runtime model path while retaining a conservative fallback when a
-    third-party model is unavailable.
-    """
+    """Return low box collisions from inline and ``model://`` world models."""
     root=ET.parse(world_path).getroot();obstacles=[]
     world=root.find('./world')
-    if world is None:
-        return obstacles
-
-    # Embedded models (for example the signal poles).
+    if world is None:return obstacles
     for model in world.findall('./model'):
-        model_pose=_pose(model.findtext('pose'))
-        obstacles.extend(_collision_obstacles(model,model_pose,
-                                               model.get('name') or 'model',
-                                               robot_height))
-
+        obstacles.extend(_collision_obstacles(model,_pose(model.findtext('pose')),
+                                               model.get('name') or 'model',robot_height))
     models_dir=os.path.normpath(os.path.join(os.path.dirname(world_path),'..','models'))
     for include in world.findall('./include'):
         uri=(include.findtext('uri') or '').strip()
-        if not uri.startswith('model://'):
-            continue
+        if not uri.startswith('model://'):continue
         model_id=uri[len('model://'):].strip('/')
-        if not model_id or '/' in model_id:
-            continue
+        if not model_id or '/' in model_id:continue
         sdf_path=os.path.join(models_dir,model_id,'model.sdf')
-        if not os.path.isfile(sdf_path):
-            continue
+        if not os.path.isfile(sdf_path):continue
         try:
-            sdf_root=ET.parse(sdf_path).getroot()
-            model=sdf_root.find('./model')
-            if model is None:
-                continue
-            include_pose=_pose(include.findtext('pose'))
-            model_pose=_compose(include_pose,_pose(model.findtext('pose')))
+            model_root=ET.parse(sdf_path).getroot()
+            model=model_root.find('./model')
+            if model is None:continue
+            model_pose=_compose(_pose(include.findtext('pose')),
+                                _pose(model.findtext('pose')))
             instance=include.findtext('name') or model.get('name') or model_id
-            obstacles.extend(_collision_obstacles(model,model_pose,instance,
-                                                   robot_height))
-        except (IOError, OSError, ET.ParseError, ValueError):
-            # A missing optional Gazebo asset must not stop the safety node.
+            obstacles.extend(_collision_obstacles(model,model_pose,instance,robot_height))
+        except (IOError,OSError,ET.ParseError,ValueError):
             continue
     return obstacles
 
 
-def body_violation(pose,layout,obstacles=()):
+def _lane_segments(layout):
+    """Return non-degenerate centre-line segments as ``(a, b, length)``."""
+    centerline=layout.get('lane_centerline')
+    if centerline is None:
+        centerline=[item['xy'] for item in layout.get('route',())]
+    points=[(float(point[0]),float(point[1])) for point in centerline]
+    segments=[]
+    for a,b in zip(points[:-1],points[1:]):
+        length=math.hypot(b[0]-a[0],b[1]-a[1])
+        if length>1e-9:segments.append((a,b,length))
+    if not segments and points:
+        segments=[(points[0],points[0],0.)]
+    return segments
+
+
+def _lane_strip_excess(point,segment,allowed,extension):
+    """Distance excess for a finite strip around one centre-line segment.
+
+    The strip is extended at both ends by the footprint's turn radius.  This
+    makes adjacent strips overlap at a corner, while points well beyond a
+    route endpoint still use the endpoint distance check below.
+    """
+    a,b,length=segment
+    if length<=1e-9:return math.hypot(point[0]-a[0],point[1]-a[1])-allowed
+    dx,dy=b[0]-a[0],b[1]-a[1]
+    projection=((point[0]-a[0])*dx+(point[1]-a[1])*dy)/length
+    lateral=abs((point[0]-a[0])*dy-(point[1]-a[1])*dx)/length
+    if -extension<=projection<=length+extension:
+        return lateral-allowed
+    endpoint=a if projection<0. else b
+    return math.hypot(point[0]-endpoint[0],point[1]-endpoint[1])-allowed
+
+
+def lane_corridor_error(pose,layout):
+    """Maximum footprint-corner excess beyond the route's drivable corridor.
+
+    A route is a union of oriented strips, not a circular tube around the
+    polyline.  Testing every footprint corner against that union preserves
+    clearance on straight segments and avoids falsely rejecting a rotated
+    footprint at a ninety-degree turn.
+    """
+    segments=_lane_segments(layout)
+    if not segments:return 0.0
+    half_width=float(layout.get('lane_width_m',0.0))/2.0
+    reserve=float(layout.get('lane_safety_margin_m',.02))
+    allowed=half_width-reserve
+    if allowed<=0:raise ValueError('lane corridor has no positive footprint clearance')
+    half_length=BODY_LENGTH/2.0+FOOTPRINT_MARGIN
+    half_body_width=BODY_WIDTH/2.0+FOOTPRINT_MARGIN
+    turn_extension=float(layout.get('lane_turn_extension_m',
+                                     math.hypot(half_length,half_body_width)))
+    if not isfinite(turn_extension) or turn_extension<0:
+        raise ValueError('invalid lane turn extension')
+    return max(min(_lane_strip_excess(corner,segment,allowed,turn_extension)
+                   for segment in segments)
+               for corner in footprint_corners(*pose[:3]))
+
+
+def lane_recovery_vector(pose,layout):
+    """Map-frame vector from the robot centre to the closest lane point."""
+    segments=_lane_segments(layout)
+    if not segments:return (0.,0.)
+    x,y=pose[:2];best=None
+    for a,b,length in segments:
+        if length<=1e-9:
+            q=a
+        else:
+            dx,dy=b[0]-a[0],b[1]-a[1]
+            t=max(0.,min(1.,((x-a[0])*dx+(y-a[1])*dy)/(length*length)))
+            q=(a[0]+t*dx,a[1]+t*dy)
+        distance=(q[0]-x)*(q[0]-x)+(q[1]-y)*(q[1]-y)
+        if best is None or distance<best[0]:best=(distance,q)
+    return (best[1][0]-x,best[1][1]-y)
+
+
+def body_violation(pose,layout,obstacles=(),include_lane=True):
     body=footprint_corners(*pose[:3])
-    if any(x<0 or y<0 or x>4.2 or y>4.2 for x,y in body):return 'field_boundary'
+    field=layout.get('field_size_m',[4.2,4.2])
+    width,height=float(field[0]),float(field[1])
+    if any(x<0 or y<0 or x>width or y>height for x,y in body):return 'field_boundary'
     for i,box in enumerate(rule_boxes(layout)):
         if polygons_overlap(body,rectangle(*box)):return 'rule_zone_%d'%i
     for item in obstacles:
         if polygons_overlap(body,item['polygon']):return item['name']
+    if include_lane and 'lane_width_m' in layout:
+        if lane_corridor_error(pose,layout)>1e-7:return 'lane_corridor'
     return None
+
+
+def lane_recovery_allowed(current_pose,projected_poses,layout,obstacles=()):
+    """Permit only monotonic inward recovery from a lane-only violation."""
+    if body_violation(current_pose,layout,obstacles)!='lane_corridor':return False
+    initial=lane_corridor_error(current_pose,layout)
+    previous=initial
+    for pose in projected_poses:
+        if body_violation(pose,layout,obstacles,include_lane=False):return False
+        error=lane_corridor_error(pose,layout)
+        if error>previous+1e-6:return False
+        previous=error
+    return previous<initial-1e-5
+
+
+def trajectory_violation(current_pose,projected_poses,layout,obstacles=()):
+    """Validate sampled swept-footprint poses, allowing only inward recovery."""
+    violations=[body_violation(pose,layout,obstacles) for pose in projected_poses]
+    bad=[value for value in violations if value]
+    if not bad:return None
+    if (set(bad)=={'lane_corridor'} and
+            lane_recovery_allowed(current_pose,projected_poses,layout,obstacles)):
+        return None
+    return bad[0]
+
+
+def sampled_twist_poses(pose,speed,lateral,omega,horizon=.25):
+    return [integrate_twist_pose(pose,speed,lateral,omega,
+                                 horizon*fraction)
+            for fraction in (.2,.4,.6,.8,1.0)]
+
+
+def lane_limited_twist(pose,speed,lateral,omega,layout,obstacles=(),horizon=.25):
+    """Attenuate a predicted lane exit without hiding other violations.
+
+    Returns ``(speed, lateral, omega, violation, limited)``.  The current pose
+    must already be valid; an existing lane violation is handled by the
+    explicit recovery state instead of this forward-command limiter.
+    """
+    projected=sampled_twist_poses(pose,speed,lateral,omega,horizon)
+    violation=trajectory_violation(pose,projected,layout,obstacles)
+    if violation!='lane_corridor' or body_violation(pose,layout,obstacles):
+        return speed,lateral,omega,violation,False
+    candidates=[(speed,lateral*.5,omega),
+                (speed,0.,omega),
+                (speed*.5,0.,omega*.5),
+                (0.,0.,0.)]
+    for candidate in candidates:
+        projected=sampled_twist_poses(pose,candidate[0],candidate[1],
+                                      candidate[2],horizon)
+        if trajectory_violation(pose,projected,layout,obstacles) is None:
+            return candidate[0],candidate[1],candidate[2],None,True
+    return speed,lateral,omega,violation,False

@@ -19,20 +19,53 @@ class SignalNode(object):
     def __init__(self):
         with io.open(rospy.get_param('~layout'),encoding='utf-8') as f:self.layout=json.load(f)
         self.camera=camera_from_urdf(rospy.get_param('~urdf'));self.listener=tf.TransformListener()
+        self.signal_geometry=rospy.get_param('~signal_geometry',self.layout.get('signal_geometry',{}))
         self.active=None;self.pending=None;self.lock=threading.RLock();self.last_saved=None
+        self.stable_light=None;self.stable_state='unknown';self.green_candidate=0
         self.publisher=rospy.Publisher('/semifinal/visual_signal',String,queue_size=1)
         self.roi=rospy.Publisher('/semifinal/signal_roi',String,queue_size=1)
         self.annotated=rospy.Publisher('/semifinal/signal_annotated',Image,queue_size=1)
         self.writer=EvidenceWriter(rospy.get_param('~evidence_dir'),imwrite,run_id='signal_%s_%d'%(time.strftime('%Y%m%d_%H%M%S'),os.getpid()))
         rospy.Subscriber('/semifinal/active_stop',String,self.configure,queue_size=1)
-        rospy.Subscriber('/camera/color/image_raw',Image,self.receive,queue_size=1,buff_size=2**24)
+        self.image_topic=rospy.get_param('~image_topic','/camera/color/image_raw')
+        rospy.Subscriber(self.image_topic,Image,self.receive,queue_size=1,buff_size=2**24)
 
     def configure(self,msg):
         try:
             data=json.loads(msg.data)
-            with self.lock:self.active=data.get('id')
+            with self.lock:
+                new_active=data.get('id')
+                if new_active!=self.active:
+                    self.pending=None
+                    self.stable_light=new_active;self.stable_state='unknown';self.green_candidate=0
+                self.active=new_active
         except ValueError:
-            with self.lock:self.active=None
+            with self.lock:
+                self.active=None;self.stable_light=None;self.stable_state='unknown';self.green_candidate=0
+
+    def stabilize(self,result):
+        """Apply fail-safe temporal hysteresis before policy arbitration.
+
+        Dangerous evidence (red, yellow or unknown) is immediate.  Green is
+        released only after three consecutive fresh classifications; while
+        waiting, a previously known red/yellow state is held so the gate can
+        still witness the real transition instead of seeing a false unknown.
+        """
+        light=result.get('light_id');raw=result.get('state','unknown')
+        if light!=self.stable_light:
+            self.stable_light=light;self.stable_state='unknown';self.green_candidate=0
+        result['raw_state']=raw
+        if raw=='green':
+            self.green_candidate+=1
+            if self.green_candidate>=3:self.stable_state='green'
+            elif self.stable_state not in ('red','yellow'):
+                self.stable_state='unknown'
+        else:
+            self.green_candidate=0
+            self.stable_state=raw if raw in ('red','yellow','unknown') else 'unknown'
+        result['state']=self.stable_state
+        result['temporal_confirmed']=(self.stable_state=='green' and self.green_candidate>=3)
+        return result
 
     def receive(self,msg):
         with self.lock:self.pending=(msg,self.active)
@@ -50,7 +83,7 @@ class SignalNode(object):
             quad=project(points,(xyz[0],xyz[1],yaw),self.camera)
             if quad is None:return result
             lo=quad.min(axis=0);hi=quad.max(axis=0)
-            frame=decode_image(msg);candidate=locate_signal(frame,[lo[0],lo[1],hi[0]-lo[0],hi[1]-lo[1]])
+            frame=decode_image(msg);candidate=locate_signal(frame,[lo[0],lo[1],hi[0]-lo[0],hi[1]-lo[1]],self.signal_geometry)
             if candidate is None:return result
             result.update(detect_signal(frame,candidate['roi']))
             self.roi.publish(String(data=json.dumps({'light_id':light_id,'roi':candidate['roi'],'stamp':stamp,'source':'visual_circle_and_housing'})))
@@ -70,7 +103,9 @@ class SignalNode(object):
         rate=rospy.Rate(15)
         while not rospy.is_shutdown():
             with self.lock:pending,self.pending=self.pending,None
-            if pending is not None:self.publisher.publish(String(data=json.dumps(self.process(*pending))))
+            if pending is not None:
+                result=self.stabilize(self.process(*pending))
+                self.publisher.publish(String(data=json.dumps(result)))
             rate.sleep()
 
 

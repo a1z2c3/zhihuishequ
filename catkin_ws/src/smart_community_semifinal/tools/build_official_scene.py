@@ -16,11 +16,20 @@ from xml.sax.saxutils import escape
 from PIL import Image, ImageDraw, ImageOps
 
 PKG = Path(__file__).resolve().parents[1]
+SIGNAL_CYCLE = {"period_s": 28.0, "red_s": 10.0, "green_s": 15.0,
+                "yellow_s": 3.0, "light_2_offset_s": 7.0,
+                "offsets_s": {"light_1": 0.0, "light_2": 7.0}}
+
+
+def write_text_lf(path, text):
+    """Write generated text deterministically on Windows and Linux."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="\n") as stream:
+        stream.write(text)
 
 
 def save_json(path, value):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
+    write_text_lf(path, json.dumps(value, ensure_ascii=False, indent=2) + "\n")
 
 
 def mesh(path, width, height, texture="texture.png", ground=False):
@@ -31,7 +40,7 @@ def mesh(path, width, height, texture="texture.png", ground=False):
     else:
         positions = "{a} 0 0 {b} 0 0 {b} 0 {h} {a} 0 {h}".format(a=-width/2,b=width/2,h=height)
         uv = "0 0 1 0 1 1 0 1"
-    path.write_text('''<?xml version="1.0" encoding="utf-8"?>
+    write_text_lf(path, '''<?xml version="1.0" encoding="utf-8"?>
 <COLLADA xmlns="http://www.collada.org/2005/11/COLLADASchema" version="1.4.1">
 <asset><unit name="meter" meter="1"/><up_axis>Z_UP</up_axis></asset>
 <library_images><image id="image"><init_from>../materials/textures/%s</init_from></image></library_images>
@@ -48,7 +57,7 @@ def mesh(path, width, height, texture="texture.png", ground=False):
 <triangles count="2" material="material"><input semantic="VERTEX" source="#verts" offset="0"/><input semantic="TEXCOORD" source="#uv" offset="1" set="0"/><p>0 0 1 1 2 2 0 0 2 2 3 3</p></triangles>
 </mesh></geometry></library_geometries>
 <library_visual_scenes><visual_scene id="scene"><node><instance_geometry url="#plane"><bind_material><technique_common><instance_material symbol="material" target="#mat"><bind_vertex_input semantic="UVMap" input_semantic="TEXCOORD" input_set="0"/></instance_material></technique_common></bind_material></instance_geometry></node></visual_scene></library_visual_scenes>
-<scene><instance_visual_scene url="#scene"/></scene></COLLADA>''' % (texture, positions, uv), encoding="utf-8")
+<scene><instance_visual_scene url="#scene"/></scene></COLLADA>''' % (texture, positions, uv))
 
 
 def card(name, source, width, height, ground=False):
@@ -70,8 +79,8 @@ def card(name, source, width, height, ground=False):
 <sdf version="1.6"><model name="%s"><static>true</static><link name="body">
 <visual name="artwork"><geometry><mesh><uri>model://%s/meshes/card.dae</uri></mesh></geometry><cast_shadows>false</cast_shadows></visual>%s
 </link></model></sdf>''' % (name,name,collision)
-    (root / "model.sdf").write_text(text, encoding="utf-8")
-    (root / "model.config").write_text('<model><name>%s</name><version>1.0</version><sdf version="1.6">model.sdf</sdf><description>Official artwork; dimensions tracked in manifest</description></model>' % name, encoding="utf-8")
+    write_text_lf(root / "model.sdf", text)
+    write_text_lf(root / "model.config", '<model><name>%s</name><version>1.0</version><sdf version="1.6">model.sdf</sdf><description>Official artwork; dimensions tracked in manifest</description></model>' % name)
 
 
 def main():
@@ -122,28 +131,37 @@ def main():
         {"name":"start","xy":[3.78,3.90],"yaw":180},
         {"name":"approach_light_1","xy":[2.78,3.90],"yaw":180,"gate":"light_1"},
         {"name":"past_light_1","xy":[1.45,3.90],"yaw":180},
-        {"name":"street_a_north","xy":[0.90,3.90],"yaw":-90,"street":"A","observe":True},
+        {"name":"street_a_north","xy":[0.90,3.90],"yaw":-90,"street":"A","observe":True,"expected_category":"person"},
         {"name":"top_left","xy":[0.30,3.90],"yaw":180},
+        {"name":"street_a_west","xy":[0.30,3.30],"yaw":0,"street":"A","observe":True,"expected_category":"person"},
         {"name":"left_bottom","xy":[0.30,2.63],"yaw":-90},
-        {"name":"street_b_west","xy":[0.96,2.63],"yaw":-90,"street":"B","observe":True},
-        {"name":"street_a_south","xy":[1.36,2.63],"yaw":90,"street":"A","observe":True},
-        {"name":"street_b_east","xy":[1.36,2.63],"yaw":-90,"street":"B","observe":True},
+        {"name":"street_b_west","xy":[0.96,2.63],"yaw":-90,"street":"B","observe":True,"expected_category":"person"},
+        {"name":"street_a_south","xy":[1.36,2.63],"yaw":90,"street":"A","observe":True,"expected_category":"person"},
+        {"name":"street_b_east","xy":[1.36,2.63],"yaw":-90,"street":"B","observe":True,"expected_category":"person"},
         {"name":"inner_turn","xy":[1.95,2.63],"yaw":0},
+        {"name":"street_b_east_side","xy":[1.95,2.35],"yaw":-138,"street":"B","observe":True,"expected_category":"person"},
         {"name":"approach_light_2","xy":[1.95,1.82],"yaw":-90,"gate":"light_2"},
         {"name":"past_light_2","xy":[1.95,0.78],"yaw":-90},
         {"name":"bottom_turn","xy":[1.95,0.30],"yaw":-90},
         {"name":"right_bottom","xy":[3.15,0.30],"yaw":0},
-        {"name":"parking_1","xy":[3.15,0.30],"yaw":0,"observe":True},
-        {"name":"parking_2","xy":[3.15,0.92],"yaw":0,"observe":True},
-        {"name":"parking_3","xy":[3.15,1.54],"yaw":0,"observe":True},
+        {"name":"parking_1","xy":[3.15,0.30],"object_xy":[3.833,0.30],"yaw":0,"observe":True,"expected_category":"plate","expected_label":"苏AB8Q62"},
+        {"name":"parking_2","xy":[3.15,0.92],"object_xy":[3.833,0.92],"yaw":0,"observe":True,"expected_category":"plate","expected_label":"鄂D7B5Q2"},
+        {"name":"parking_3","xy":[3.15,1.54],"object_xy":[3.833,1.54],"yaw":0,"observe":True,"expected_category":"plate","expected_label":"苏APL12A"},
         {"name":"right_top","xy":[3.15,3.90],"yaw":90},
         {"name":"finish","xy":[3.78,3.90],"yaw":180}]
     lights=[{"id":"light_1","xy":[1.80,3.88],"yaw":90},
             {"id":"light_2","xy":[1.95,.56],"yaw":180}]
-    layout = {"schema_version":2,"field_size_m":[4.2,4.2],"lane_width_m":0.6,
+    layout = {"schema_version":2,"signal_cycle":SIGNAL_CYCLE,"field_size_m":[4.2,4.2],"lane_width_m":0.6,
+              "lane_safety_margin_m":0.02,
+              "lane_centerline":[entry["xy"] for entry in route],
               "coordinate_status":"dimension_constrained_reconstruction_pending_official_coordinate_confirmation",
               "a_polygon":a_polygon,"b_polygon":b_polygon,
               "parking_boundary_x":3.45,"parking_open_above_y":3.60,
+              "population":{"total":16,"resident":14,"visitor":2,
+                             "by_street":{"A":{"total":8,"resident":7,"visitor":1},
+                                           "B":{"total":8,"resident":7,"visitor":1}}},
+              "person_orientation_policy":{"A":["north","south","west"],
+                                             "B":["north","east"]},
               "route":route,
               "lights":lights,
               "stop_lines":[{"id":"light_1","point":[2.44,3.9],"direction":[-1,0]},
@@ -151,7 +169,7 @@ def main():
               "assumptions":["The two diagrams are schematic and differ in proportions.",
                  "60 cm labels override pixel-derived distances.",
                  "Person artwork assignment and exact placements are illustrative, not specified by the diagram.",
-                 "A arrows permit north/south/west; B arrows permit north/east. Selected card fronts are north/south for A and north for B.",
+                 "A arrows permit north/south/west; B arrows permit north/east. Card fronts and observation poses cover every permitted direction.",
                  "Light dimensions 0.64 x 0.14 m and overall 0.48 m are official; mounting locations are reconstructed."]}
     save_json(PKG/"config/layout.json",layout)
     scale=300
@@ -181,18 +199,36 @@ def main():
            '<physics type="ode"><max_step_size>0.001</max_step_size><real_time_update_rate>200</real_time_update_rate></physics>',
            '<include><uri>model://sun</uri></include><include><uri>model://ground_plane</uri></include>',
            '<include><uri>model://official_floor</uri><pose>0 0 0.002 0 0 0</pose></include>']
+    # Low static masses inside the no-drive islands provide real lidar returns
+    # and map structure while staying clear of lanes, stop lines, and cards.
+    for name,x,y,sx,sy in [("building_a",2.60,2.05,.30,.70),
+                            ("building_b",.75,.95,.25,.40)]:
+        world.append('<model name="%s"><static>true</static><pose>%f %f 0 0 0 0</pose>'%(name,x,y))
+        world.append('<link name="body"><visual name="mass"><pose>0 0 .25 0 0 0</pose><geometry><box><size>%f %f .50</size></box></geometry><material><ambient>.35 .38 .42 1</ambient><diffuse>.35 .38 .42 1</diffuse></material></visual>'%(sx,sy))
+        world.append('<collision name="mass"><pose>0 0 .25 0 0 0</pose><geometry><box><size>%f %f .50</size></box></geometry></collision></link></model>'%(sx,sy))
     instances=[]
     def include(model,name,x,y,yaw,z=0.003):
         world.append('<include><uri>model://%s</uri><name>%s</name><pose>%f %f %f 0 0 %f</pose></include>'%(model,name,x,y,z,yaw))
         instances.append({"model":model,"name":name,"x":x,"y":y,"z":z,"yaw":yaw})
-    # Card front is local -Y. The official A arrows permit both north and south;
-    # observation poses must view the correct side, not mirrored back faces.
-    for i,(model,x,y,yaw) in enumerate([
-        ("resident_1",.75,3.18,math.pi),("resident_7",1.00,3.18,math.pi),
-        ("visitor_F1",1.15,3.40,0),("resident_10",1.36,3.40,0),("resident_16",1.57,3.40,0),
+    # Card front is local -Y. The official arrows are treated as allowed
+    # viewing directions: A has north/south/west and B has north/east. Keep
+    # the corresponding observation poses in the route so no card is forced
+    # to be read from its mirrored back face.
+    person_instances=[
+        # A (top island): two north-facing, three south-facing and three
+        # west-facing cards, matching the three legal directions shown by
+        # the official arrow mark.
+        ("resident_1",.70,3.18,math.pi),("resident_7",.86,3.18,math.pi),
+        ("resident_3",1.02,3.18,-math.pi/2),("resident_4",1.16,3.18,-math.pi/2),
+        ("visitor_F1",1.08,3.40,0),("resident_10",1.25,3.40,0),
+        ("resident_5",1.42,3.40,-math.pi/2),("resident_16",1.59,3.40,0),
+        # B (lower island): five north-facing and three east-facing cards.
         ("resident_2",.76,1.95,math.pi),("resident_6",.96,1.95,math.pi),
-        ("resident_9",1.15,1.95,math.pi),("visitor_F2",1.36,1.95,math.pi),
-        ("resident_14",1.54,1.95,math.pi)]):
+        ("resident_9",1.15,1.95,math.pi),("visitor_F2",1.36,1.95,math.pi/2),
+        ("resident_14",1.54,1.95,math.pi),
+        ("resident_11",.76,1.70,math.pi),("resident_12",1.15,1.70,math.pi),
+        ("resident_13",1.54,1.70,math.pi/2)]
+    for i,(model,x,y,yaw) in enumerate(person_instances):
         include(model,"person_%02d"%i,x,y,yaw)
     for i,y in enumerate([.30,.92,1.54],1):
         include("car_background","car_%d"%i,3.84,y,-math.pi/2)
@@ -206,10 +242,11 @@ def main():
             parts.append('<visual name="%s"><pose>%f -.025 .41 1.570796 0 0</pose><geometry><cylinder><radius>.052</radius><length>.012</length></cylinder></geometry><material><ambient>%s</ambient><diffuse>%s</diffuse></material></visual>'%(colour,lx,rgb,rgb))
         for lx in [-.29,.29]:
             parts.append('<visual name="leg_%s"><pose>%f 0 .17 0 0 0</pose><geometry><box><size>.025 .025 .34</size></box></geometry></visual><collision name="leg_%s"><pose>%f 0 .17 0 0 0</pose><geometry><box><size>.025 .025 .34</size></box></geometry></collision>'%(lx,lx,lx,lx))
-        parts.append('</link><plugin name="signal_cycle" filename="libsemifinal_signal.so"><offset>%s</offset></plugin></model>' % ("0" if name=="light_1" else "7"));world.extend(parts)
+        offset = float(SIGNAL_CYCLE["offsets_s"][name])
+        parts.append('</link><plugin name="signal_cycle" filename="libsemifinal_signal.so"><offset>%s</offset><period>%s</period><red>%s</red><green>%s</green></plugin></model>' % (offset, SIGNAL_CYCLE["period_s"], SIGNAL_CYCLE["red_s"], SIGNAL_CYCLE["green_s"]));world.extend(parts)
     world.append('</world></sdf>')
     (PKG/"worlds").mkdir(exist_ok=True)
-    (PKG/"worlds/official_semifinal.world").write_text("\n".join(world),encoding="utf-8")
+    write_text_lf(PKG/"worlds/official_semifinal.world", "\n".join(world) + "\n")
     save_json(PKG/"config/scene_instances_for_evaluation_only.json",instances)
     print("Generated",len(recognition),"reference assets,",len(instances),"scene instances.")
 

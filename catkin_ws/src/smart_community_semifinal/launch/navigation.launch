@@ -1,0 +1,63 @@
+<?xml version="1.0"?>
+<launch>
+  <!-- Optional standard chain: map_server -> AMCL -> move_base. The legacy
+       Patrol node remains the fallback; move_base is routed through guard. -->
+  <arg name="gui" default="true"/>
+  <arg name="verbose" default="false"/>
+  <arg name="start_scene" default="true"/>
+  <arg name="start_perception" default="true"/>
+  <arg name="start_client" default="true"/>
+  <arg name="evidence_dir" default="$(optenv HOME /tmp)/semifinal_evidence_nav"/>
+  <arg name="map" default="$(find smart_community_semifinal)/maps/slam_map.yaml"/>
+  <arg name="navigation_map" default="$(find smart_community_semifinal)/maps/navigation_map.yaml"/>
+  <!-- Use the verified semantic route by default.  Pass layout_astar.json
+       explicitly after validating the regenerated map against the physical
+       lane/rule-zone contract. -->
+  <arg name="route_layout" default="$(find smart_community_semifinal)/config/layout.json"/>
+  <arg name="initial_pose_x" default="3.78"/>
+  <arg name="initial_pose_y" default="3.90"/>
+  <arg name="initial_pose_a" default="3.14159265"/>
+  <arg name="gate_wait_timeout" default="90.0"/>
+  <arg name="gate_wait_wall_timeout" default="600.0"/>
+  <arg name="gate_scan_period" default="3.0"/>
+  <arg name="gate_scan_speed" default="0.12"/>
+
+  <include if="$(arg start_scene)" file="$(find smart_community_semifinal)/launch/scene.launch">
+    <arg name="gui" value="$(arg gui)"/><arg name="verbose" value="$(arg verbose)"/>
+  </include>
+  <node pkg="map_server" type="map_server" name="map_server" args="$(arg map)" output="screen"/>
+  <node pkg="map_server" type="map_server" name="navigation_map_server" args="$(arg navigation_map)" ns="navigation_map" output="screen"/>
+  <node pkg="amcl" type="amcl" name="amcl" output="screen">
+    <rosparam command="load" file="$(find smart_community_semifinal)/config/amcl.yaml"/>
+    <param name="set_initial_pose" value="true"/>
+    <param name="initial_pose_x" value="$(arg initial_pose_x)"/>
+    <param name="initial_pose_y" value="$(arg initial_pose_y)"/>
+    <param name="initial_pose_a" value="$(arg initial_pose_a)"/>
+    <param name="initial_cov_xx" value="0.0025"/>
+    <param name="initial_cov_yy" value="0.0025"/>
+    <param name="initial_cov_aa" value="0.015"/>
+    <remap from="scan" to="/scan"/>
+  </node>
+  <include file="$(find smart_community_semifinal)/launch/guard.launch"/>
+  <node pkg="move_base" type="move_base" name="move_base" output="screen" clear_params="true">
+    <rosparam command="load" file="$(find smart_community_semifinal)/config/costmap_common.yaml" ns="global_costmap"/>
+    <rosparam command="load" file="$(find smart_community_semifinal)/config/costmap_common.yaml" ns="local_costmap"/>
+    <rosparam command="load" file="$(find smart_community_semifinal)/config/global_costmap.yaml" ns="global_costmap"/>
+    <rosparam command="load" file="$(find smart_community_semifinal)/config/local_costmap.yaml" ns="local_costmap"/>
+    <rosparam command="load" file="$(find smart_community_semifinal)/config/dwa_local_planner.yaml"/>
+    <rosparam command="load" file="$(find smart_community_semifinal)/config/move_base.yaml"/>
+    <!-- Guard is the only node allowed to publish the physical cmd_vel. -->
+    <remap from="cmd_vel" to="/semifinal/cmd_vel_requested"/>
+  </node>
+  <include if="$(arg start_perception)" file="$(find smart_community_semifinal)/launch/perception.launch">
+    <arg name="evidence_dir" value="$(arg evidence_dir)"/>
+  </include>
+  <node if="$(arg start_client)" pkg="smart_community_semifinal" type="move_base_waypoint_client.py" name="move_base_waypoint_client" output="screen">
+    <param name="layout" value="$(find smart_community_semifinal)/config/layout.json"/>
+    <param name="route_layout" value="$(arg route_layout)"/>
+    <param name="gate_wait_timeout" value="$(arg gate_wait_timeout)"/>
+    <param name="gate_wait_wall_timeout" value="$(arg gate_wait_wall_timeout)"/>
+    <param name="gate_scan_period" value="$(arg gate_scan_period)"/>
+    <param name="gate_scan_speed" value="$(arg gate_scan_speed)"/>
+  </node>
+</launch>

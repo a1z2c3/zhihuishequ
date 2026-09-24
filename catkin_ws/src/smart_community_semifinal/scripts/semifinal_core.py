@@ -10,15 +10,45 @@ import time
 from runtime_compat import isfinite, makedirs
 
 
+# Keep the physical contract in one module.  Guard and patrol use the same
+# dimensions, so changing a footprint parameter cannot silently change only
+# one half of the safety decision.
+BODY_LENGTH = .334
+BODY_WIDTH = .303
+FOOTPRINT_MARGIN = .020
+LANE_WIDTH = .600
+AVOID_SHIFT = .090
+SIDE_SAFETY = .012
+REAR_EXTENT = BODY_LENGTH / 2.0 + FOOTPRINT_MARGIN
+
+
 def wrap_angle(angle):
     return math.atan2(math.sin(angle), math.cos(angle))
 
 
-def footprint_corners(x, y, yaw, length=0.334, width=0.303, margin=0.02):
+def footprint_corners(x, y, yaw, length=BODY_LENGTH, width=BODY_WIDTH,
+                      margin=FOOTPRINT_MARGIN):
     c, s = math.cos(yaw), math.sin(yaw)
     a, b = length / 2 + margin, width / 2 + margin
     return [(x + c * u - s * v, y + s * u + c * v)
             for u, v in [(a, b), (a, -b), (-a, -b), (-a, b)]]
+
+
+def integrate_twist_pose(pose, speed, lateral, omega, duration):
+    """Integrate a constant body-frame holonomic twist for one sample."""
+    if not all(isfinite(v) for v in (speed,lateral,omega,duration)) or duration < 0:
+        raise ValueError('invalid twist integration input')
+    x,y,yaw=pose[:3]
+    end=yaw+omega*duration
+    if abs(omega)<1e-8:
+        return (x+(speed*math.cos(yaw)-lateral*math.sin(yaw))*duration,
+                y+(speed*math.sin(yaw)+lateral*math.cos(yaw))*duration,
+                end)
+    return (x+(speed*(math.sin(end)-math.sin(yaw))+
+               lateral*(math.cos(end)-math.cos(yaw)))/omega,
+            y+(speed*(math.cos(yaw)-math.cos(end))+
+               lateral*(math.sin(end)-math.sin(yaw)))/omega,
+            end)
 
 
 def front_clearance(pose, line_point, direction, margin=0.02):
@@ -32,6 +62,18 @@ def front_clearance(pose, line_point, direction, margin=0.02):
                for x, y in footprint_corners(pose[0],pose[1],pose[2],margin=margin))
 
 
+def body_over_stop_line(pose, line_point, direction):
+    """True while the physical body straddles a stop line."""
+    dx, dy = direction
+    norm = math.hypot(dx, dy)
+    if norm == 0:
+        raise ValueError("stop-line direction cannot be zero")
+    distances = [(line_point[0] - x) * dx / norm +
+                 (line_point[1] - y) * dy / norm
+                 for x, y in footprint_corners(pose[0],pose[1],pose[2],margin=0)]
+    return min(distances) < -1e-6 and max(distances) >= -1e-6
+
+
 def braking_distance(speed, latency=0.25, deceleration=0.35, buffer=0.03):
     if not all(isfinite(v) for v in (speed, latency, deceleration, buffer)):
         raise ValueError("non-finite braking inputs")
@@ -42,45 +84,70 @@ def braking_distance(speed, latency=0.25, deceleration=0.35, buffer=0.03):
 
 
 def scan_clearance(scan, speed):
-    """Classify a scan against the candidate inflated-body corridors.
+    """Classify a scan against bounded, inflated body corridors.
 
-    A side is free only if the whole robot footprint after a bounded 0.09 m
-    sidestep is clear.  This distinguishes an empty side sector from a
-    centered obstacle that overlaps both legal corridors.  The scan object is
-    intentionally duck-typed so the function works in offline tests too.
+    Coordinates are in the laser frame, which is coincident with the planar
+    base frame in the teaching robot.  The algorithm deliberately ignores
+    the outer lane edge (|y| ~= .30) as a route boundary rather than treating
+    it as a temporary obstacle.  ``obstacle_ahead`` remains true until the
+    obstacle's rear edge is behind the inflated rear footprint, preventing a
+    premature recenter into a long obstacle.
     """
-    body_half_width = .303 / 2 + .02
-    avoid_shift = .09
-    side_safety = .012
+    body_half_width = BODY_WIDTH / 2.0 + FOOTPRINT_MARGIN
+    half = body_half_width + SIDE_SAFETY
+    stop_horizon = .187 + braking_distance(max(abs(speed), .08))
+    rear_limit = -REAR_EXTENT - SIDE_SAFETY
     forward = False
     obstacle_ahead = False
+    left_obstacle_ahead = False
+    right_obstacle_ahead = False
+    obstacle_rear_x = None
+    center_blocked = False
+    recenter_blocked = False
     left_blocked = False
     right_blocked = False
-    # Remaining clearance to the lane edge after the bounded sidestep and
-    # the inflated footprint.  This is also the truthful default when no
-    # return is present in a sector.
-    lane_clearance = max(0., .6 / 2 - avoid_shift - body_half_width - side_safety)
-    left_min = right_min = lane_clearance
-    stop_horizon = .187 + braking_distance(max(abs(speed), .08))
-    half = body_half_width + side_safety
+    left_min = right_min = max(0., LANE_WIDTH / 2.0 - AVOID_SHIFT - half)
     for i, distance in enumerate(scan.ranges):
-        if not isfinite(distance) or not scan.range_min < distance < scan.range_max:
+        if (not isfinite(distance) or
+                not scan.range_min < distance < scan.range_max):
             continue
         angle = scan.angle_min + i * scan.angle_increment
         x = distance * math.cos(angle)
         y = distance * math.sin(angle)
-        if x <= 0 or x >= .65:
+        # Include a short rear interval for pass confirmation.  Points behind
+        # the robot beyond the inflated rear footprint cannot affect motion.
+        if x <= rear_limit or x >= .65:
             continue
-        if x < stop_horizon and abs(y) <= body_half_width:
+        if x < stop_horizon and abs(y) <= half:
             forward = True
-        # Keep the obstacle in the avoidance lane until its full body has
-        # passed the robot.  A narrow forward-only test would go false as
-        # soon as the robot sidesteps beside the box, causing an unsafe
-        # immediate recenter into the box.
-        if abs(y) <= body_half_width + avoid_shift + .05:
-            obstacle_ahead = True
-        left_distance = abs(y - avoid_shift) - half
-        right_distance = abs(y + avoid_shift) - half
+        # Only points inside the center body corridor participate in the
+        # longitudinal obstacle state.  A side obstacle (for example a lamp
+        # leg at |y| ~= .30) must not remain "ahead" after the robot has
+        # shifted to the opposite corridor.  The rear limit is the swept-body
+        # criterion: once the obstacle is behind the inflated rear edge it no
+        # longer blocks recentering.
+        if abs(y) <= half + AVOID_SHIFT:
+            recenter_blocked = True
+        if abs(y) <= half:
+            center_blocked = True
+            if x > rear_limit:
+                obstacle_ahead = True
+        # Longitudinal occupancy is evaluated in each candidate corridor.
+        # This lets a shifted robot pass a side obstacle without treating it
+        # as a center obstacle, while still keeping the selected corridor
+        # occupied until its rear edge clears the inflated body.
+        if abs(y - AVOID_SHIFT) <= half and x > rear_limit:
+            left_obstacle_ahead = True
+        if abs(y + AVOID_SHIFT) <= half and x > rear_limit:
+            right_obstacle_ahead = True
+        if abs(y) <= half + AVOID_SHIFT and x > rear_limit:
+            # The rear edge is the smallest forward-coordinate sample.  The
+            # robot may recenter only after this edge is behind the inflated
+            # rear footprint; using the front edge here would unnecessarily
+            # prolong the detour and hides the actual swept-volume contract.
+            obstacle_rear_x = x if obstacle_rear_x is None else min(obstacle_rear_x,x)
+        left_distance = abs(y - AVOID_SHIFT) - half
+        right_distance = abs(y + AVOID_SHIFT) - half
         if left_distance <= 0:
             left_blocked = True
             left_min = 0.
@@ -94,15 +161,19 @@ def scan_clearance(scan, speed):
     return {
         "forward_obstacle": forward,
         "obstacle_ahead": obstacle_ahead,
+        "left_obstacle_ahead": left_obstacle_ahead,
+        "right_obstacle_ahead": right_obstacle_ahead,
+        "obstacle_rear_x": obstacle_rear_x,
         "left_free": not left_blocked,
         "right_free": not right_blocked,
+        "recenter_clear": not recenter_blocked,
         "left_clearance": left_min,
         "right_clearance": right_min,
     }
 
 
 class GreenGate(object):
-    """A clock prediction can never replace fresh visual evidence.
+    """A clock prediction still requires fresh visual evidence.
 
     Timestamp must be the image acquisition time in the same clock domain as now.
     Repeated frames, clock resets, missing observations, red and yellow close it.

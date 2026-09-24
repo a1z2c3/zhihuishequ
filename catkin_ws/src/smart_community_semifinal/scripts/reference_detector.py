@@ -42,6 +42,7 @@ class ReferenceDetector(object):
                                  edgeThreshold=8, fastThreshold=7)
         self.min_inliers, self.min_ratio = min_inliers, min_ratio
         self.references = []
+        plate_templates=[]
         for item in self.manifest["recognition_assets"]:
             if item["category"] not in ("resident", "visitor", "plate"):
                 continue
@@ -52,12 +53,16 @@ class ReferenceDetector(object):
                 alpha = src[:, :, 3:4] / 255.0
                 src = (src[:, :, :3]*alpha + 210*(1-alpha)).astype(np.uint8)
             gray = cv2.cvtColor(src, cv2.COLOR_BGR2GRAY)
+            if item['category']=='plate':plate_templates.append((gray,item['label']))
             scale = 480.0 / max(gray.shape)
             gray = cv2.resize(gray, None, fx=scale, fy=scale)
             kp, desc = self.orb.detectAndCompute(gray, None)
             self.references.append((item, gray, kp, desc))
+        from plate_ocr import PlateCharacterRecognizer
+        self.plate_ocr=PlateCharacterRecognizer(plate_templates)
 
-    def detect(self, frame):
+    def detect(self, frame, categories=None):
+        allowed=set(categories) if categories else None
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         kp, desc = self.orb.detectAndCompute(gray, None)
         if desc is None or len(kp) < self.min_inliers:
@@ -69,6 +74,8 @@ class ReferenceDetector(object):
         matcher.add([desc]); matcher.train()
         output = []
         for item, reference, ref_kp, ref_desc in self.references:
+            if allowed is not None and item['category'] not in allowed:
+                continue
             if ref_desc is None:
                 continue
             pairs = matcher.knnMatch(ref_desc, k=2)
@@ -107,7 +114,13 @@ class ReferenceDetector(object):
                 continue
             # Plates share borders and repeated characters. Geometric inliers
             # alone can confidently pick the wrong plate: verify rectified pixels.
-            rectified = cv2.warpPerspective(gray, np.linalg.inv(matrix), (w,h))
+            try:
+                inverse = np.linalg.inv(matrix)
+            except (np.linalg.LinAlgError, ValueError, TypeError):
+                # A degenerate RANSAC homography rejects only this candidate;
+                # other references in the same image must still be evaluated.
+                continue
+            rectified = cv2.warpPerspective(gray, inverse, (w,h))
             pad_y,pad_x = max(1,int(h*.08)),max(1,int(w*.08))
             a=reference[pad_y:-pad_y,pad_x:-pad_x].astype(np.float32).ravel()
             b=rectified[pad_y:-pad_y,pad_x:-pad_x].astype(np.float32).ravel()
@@ -115,6 +128,15 @@ class ReferenceDetector(object):
             correlation=float(np.dot(a,b)/max(1e-6,np.linalg.norm(a)*np.linalg.norm(b)))
             if correlation < (0.76 if item["category"]=="plate" else 0.58):
                 continue
+            ocr=None
+            if item['category']=='plate':
+                try:
+                    ocr=self.plate_ocr.recognize(rectified)
+                except Exception as exc:
+                    # Character verification must not suppress an otherwise
+                    # valid reference or the other objects in this frame.
+                    ocr={'text':'???????','characters':[], 'confidence':0.,
+                         'complete':False,'error':type(exc).__name__}
             x,y,bw,bh = cv2.boundingRect(quad)
             score = float(min(1, ratio)*min(1, n_inliers/24.0)*min(1, spread/0.10))
             # Interior feature correspondences constrain metric pose better than
@@ -130,7 +152,13 @@ class ReferenceDetector(object):
                            "width_m":item["width_m"],"height_m":item["height_m"],
                            "pose_correspondences":{"object":metric.tolist(),"image":target[indices].tolist()},
                            "photometric_correlation":round(correlation,4),
-                           "method": "official_reference_orb_ransac"})
+                           "method": "official_reference_orb_ransac",
+                           "character_ocr":bool(ocr and ocr['complete']),
+                           "ocr_status":('error' if ocr and ocr.get('error') else
+                                         'recognized' if ocr and ocr['complete'] else 'uncertain'),
+                           "ocr_result":ocr,
+                           "ocr_matches_reference":bool(ocr and ocr['complete'] and
+                                                         ocr['text']==item['label'])})
         output.sort(key=lambda d: d["confidence"], reverse=True)
         kept = []
         for candidate in output:
@@ -158,6 +186,15 @@ class ReferenceDetector(object):
             for offset in (0,1):
                 draw.rectangle((x+offset,y+offset,x+w-offset,y+h-offset), outline=(15,220,145))
             label = "%s %s %.2f" % (d["category"], d["label"], d["confidence"])
+            if d.get('category')=='plate':
+                state=d.get('ocr_display_status','pending')
+                if state=='verified':
+                    label += ' OCR:'+d['ocr_display_text']
+                elif state=='pending':
+                    slots=d.get('ocr_pending_slots',list(range(1,8)))
+                    label += ' OCR:pending[%s]'%(','.join(str(i) for i in slots))
+                else:
+                    label += ' OCR:'+state
             # ASCII label fallback preserves reference ID in a font-poor VM.
             try:
                 draw.text((max(0,x), max(0,y-21)), label, font=font, fill=(255,210,30))

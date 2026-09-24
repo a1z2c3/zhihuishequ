@@ -1,10 +1,108 @@
 {
   "schema_version": 2,
+  "signal_cycle": {
+    "period_s": 28.0,
+    "red_s": 10.0,
+    "green_s": 15.0,
+    "yellow_s": 3.0,
+    "light_2_offset_s": 7.0,
+    "offsets_s": {
+      "light_1": 0.0,
+      "light_2": 7.0
+    }
+  },
   "field_size_m": [
     4.2,
     4.2
   ],
   "lane_width_m": 0.6,
+  "lane_safety_margin_m": 0.02,
+  "lane_centerline": [
+    [
+      3.78,
+      3.9
+    ],
+    [
+      2.78,
+      3.9
+    ],
+    [
+      1.45,
+      3.9
+    ],
+    [
+      0.9,
+      3.9
+    ],
+    [
+      0.3,
+      3.9
+    ],
+    [
+      0.3,
+      3.3
+    ],
+    [
+      0.3,
+      2.63
+    ],
+    [
+      0.96,
+      2.63
+    ],
+    [
+      1.36,
+      2.63
+    ],
+    [
+      1.36,
+      2.63
+    ],
+    [
+      1.95,
+      2.63
+    ],
+    [
+      1.95,
+      2.35
+    ],
+    [
+      1.95,
+      1.82
+    ],
+    [
+      1.95,
+      0.78
+    ],
+    [
+      1.95,
+      0.3
+    ],
+    [
+      3.15,
+      0.3
+    ],
+    [
+      3.15,
+      0.3
+    ],
+    [
+      3.15,
+      0.92
+    ],
+    [
+      3.15,
+      1.54
+    ],
+    [
+      3.15,
+      3.9
+    ],
+    [
+      3.78,
+      3.9
+    ]
+  ],
   "coordinate_status": "dimension_constrained_reconstruction_pending_official_coordinate_confirmation",
   "a_polygon": [
     [
@@ -52,6 +150,34 @@
   ],
   "parking_boundary_x": 3.45,
   "parking_open_above_y": 3.6,
+  "population": {
+    "total": 16,
+    "resident": 14,
+    "visitor": 2,
+    "by_street": {
+      "A": {
+        "total": 8,
+        "resident": 7,
+        "visitor": 1
+      },
+      "B": {
+        "total": 8,
+        "resident": 7,
+        "visitor": 1
+      }
+    }
+  },
+  "person_orientation_policy": {
+    "A": [
+      "north",
+      "south",
+      "west"
+    ],
+    "B": [
+      "north",
+      "east"
+    ]
+  },
   "route": [
     {
       "name": "start",
@@ -86,7 +212,8 @@
       ],
       "yaw": -90,
       "street": "A",
-      "observe": true
+      "observe": true,
+      "expected_category": "person"
     },
     {
       "name": "top_left",
@@ -95,6 +222,17 @@
         3.9
       ],
       "yaw": 180
+    },
+    {
+      "name": "street_a_west",
+      "xy": [
+        0.3,
+        3.3
+      ],
+      "yaw": 0,
+      "street": "A",
+      "observe": true,
+      "expected_category": "person"
     },
     {
       "name": "left_bottom",
@@ -112,7 +250,8 @@
       ],
       "yaw": -90,
       "street": "B",
-      "observe": true
+      "observe": true,
+      "expected_category": "person"
     },
     {
       "name": "street_a_south",
@@ -122,7 +261,8 @@
       ],
       "yaw": 90,
       "street": "A",
-      "observe": true
+      "observe": true,
+      "expected_category": "person"
     },
     {
       "name": "street_b_east",
@@ -132,7 +272,8 @@
       ],
       "yaw": -90,
       "street": "B",
-      "observe": true
+      "observe": true,
+      "expected_category": "person"
     },
     {
       "name": "inner_turn",
@@ -141,6 +282,17 @@
         2.63
       ],
       "yaw": 0
+    },
+    {
+      "name": "street_b_east_side",
+      "xy": [
+        1.95,
+        2.35
+      ],
+      "yaw": -138,
+      "street": "B",
+      "observe": true,
+      "expected_category": "person"
     },
     {
       "name": "approach_light_2",
@@ -181,8 +333,14 @@
         3.15,
         0.3
       ],
+      "object_xy": [
+        3.833,
+        0.3
+      ],
       "yaw": 0,
-      "observe": true
+      "observe": true,
+      "expected_category": "plate",
+      "expected_label": "苏AB8Q62"
     },
     {
       "name": "parking_2",
@@ -190,8 +348,14 @@
         3.15,
         0.92
       ],
+      "object_xy": [
+        3.833,
+        0.92
+      ],
       "yaw": 0,
-      "observe": true
+      "observe": true,
+      "expected_category": "plate",
+      "expected_label": "鄂D7B5Q2"
     },
     {
       "name": "parking_3",
@@ -199,8 +363,14 @@
         3.15,
         1.54
       ],
+      "object_xy": [
+        3.833,
+        1.54
+      ],
       "yaw": 0,
-      "observe": true
+      "observe": true,
+      "expected_category": "plate",
+      "expected_label": "苏APL12A"
     },
     {
       "name": "right_top",
@@ -265,7 +435,7 @@
     "The two diagrams are schematic and differ in proportions.",
     "60 cm labels override pixel-derived distances.",
     "Person artwork assignment and exact placements are illustrative, not specified by the diagram.",
-    "A arrows permit north/south/west; B arrows permit north/east. Selected card fronts are north/south for A and north for B.",
+    "A arrows permit north/south/west; B arrows permit north/east. Card fronts and observation poses cover every permitted direction.",
     "Light dimensions 0.64 x 0.14 m and overall 0.48 m are official; mounting locations are reconstructed."
   ]
 }

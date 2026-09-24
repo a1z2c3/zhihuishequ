@@ -10,37 +10,64 @@ from std_msgs.msg import String
 from geometry_msgs.msg import Twist
 from rosgraph_msgs.msg import Clock
 pkg=rospkg.RosPack().get_path('smart_community_semifinal');sys.path.insert(0,os.path.join(pkg,'scripts'))
-from scene_geometry import body_violation,physical_obstacles
-from semifinal_core import front_clearance,footprint_corners
+from scene_geometry import body_violation,lane_corridor_error,physical_obstacles
+from semifinal_core import front_clearance,body_over_stop_line
 from runtime_compat import monotonic,makedirs
 
 rospy.init_node('independent_run_evaluator')
 out=rospy.get_param('~output_dir',os.path.expanduser('~/semifinal_evaluation'));makedirs(out)
 with io.open(os.path.join(pkg,'config/layout.json'),encoding='utf-8') as f:layout=json.load(f)
+cycle=layout.get('signal_cycle',{'period_s':28.0,'red_s':10.0,'green_s':15.0,'yellow_s':3.0,
+                                 'light_2_offset_s':7.0,
+                                 'offsets_s':{'light_1':0.0,'light_2':7.0}})
+clock_offsets=cycle.get('offsets_s') or {
+    'light_1':0.0,
+    'light_2':float(cycle.get('light_2_offset_s',7.0)),
+}
 obstacles=physical_obstacles(os.path.join(pkg,'worlds/official_semifinal.world'))
-lock=threading.RLock();start=monotonic();poses=[];violations=[];crossings=[];images=[];states=[];events=[];frames=[];signals=[];guard=[];localization=[]
-task={};summary={};last_pose_time=-1;last_clear={};first_time=None
+physical_layout=dict(layout,lane_safety_margin_m=0.)
+lock=threading.RLock();start=monotonic();poses=[];violations=[];crossings=[];red_body_violations=[];images=[];states=[];events=[];frames=[];signals=[];guard=[];localization=[]
+safety_margin_warnings=[];minimum_lane_clearance=None
+task={};summary={};last_pose_time=-1;last_clear={};red_occupied={};first_time=None
 
 
 def on_pose(msg):
-    global last_pose_time,first_time
+    global last_pose_time,first_time,minimum_lane_clearance
     now=rospy.Time.now().to_sec()
     if now-last_pose_time<.09 or 'semifinal_bot' not in msg.name:return
     last_pose_time=now
     if first_time is None:first_time=now
     p=msg.pose[msg.name.index('semifinal_bot')];q=p.orientation
     pose=(p.position.x,p.position.y,tf.transformations.euler_from_quaternion([q.x,q.y,q.z,q.w])[2])
-    bad=body_violation(pose,layout,obstacles)
+    bad=body_violation(pose,physical_layout,obstacles)
+    clearance=-lane_corridor_error(pose,physical_layout)
+    reserved=lane_corridor_error(pose,layout)
     with lock:
         poses.append([now]+list(pose))
+        if minimum_lane_clearance is None or clearance<minimum_lane_clearance:
+            minimum_lane_clearance=clearance
         if bad and len(violations)<100:violations.append({'stamp':now,'obstacle':bad,'pose':pose})
+        if reserved>1e-7 and bad is None and len(safety_margin_warnings)<100:
+            safety_margin_warnings.append({'stamp':now,'pose':pose,
+                                           'reserve_excess_m':reserved,
+                                           'physical_clearance_m':clearance})
         for i,line in enumerate(layout['stop_lines']):
             clear=front_clearance(pose,line['point'],line['direction'],margin=0)
             # Spatially restrict the evaluation to the associated corridor.
             near=abs(pose[1]-3.9)<.22 if i==0 else abs(pose[0]-1.95)<.22 and pose[1]<2.1
+            offset=float(clock_offsets.get(line['id'],
+                                           0.0 if i==0 else
+                                           cycle.get('light_2_offset_s',7.0)))
+            period=float(cycle.get('period_s',28.0));red=float(cycle.get('red_s',10.0))
+            green=float(cycle.get('green_s',15.0))
+            phase=(now+offset)%period
+            state='red' if phase<red else 'green' if phase<red+green else 'yellow'
+            occupied=near and state=='red' and body_over_stop_line(pose,line['point'],line['direction'])
+            if occupied and not red_occupied.get(line['id'],False):
+                red_body_violations.append({'light_id':line['id'],'stamp':now,'pose':pose,
+                                            'true_phase':state})
+            red_occupied[line['id']]=occupied
             if near and line['id'] in last_clear and last_clear[line['id']]>=0 and clear<0:
-                phase=(now+(0 if i==0 else 7))%28
-                state='red' if phase<10 else 'green' if phase<25 else 'yellow'
                 crossings.append({'light_id':line['id'],'stamp':now,'true_phase':state,'pass':state=='green'})
             last_clear[line['id']]=clear
 
@@ -77,7 +104,11 @@ while not rospy.is_shutdown():
     with lock:
         result={'scope':'Independent Gazebo evaluation, truth isolated from controller',
                 'wall_seconds':monotonic()-start,'task':task,'street_summary':summary,'state_transitions':states,
-                'poses':poses,'body_violations':violations,'stop_crossings':crossings,'events':events,
+                'poses':poses,'body_violations':violations,
+                'safety_margin_warnings':safety_margin_warnings,
+                'minimum_lane_clearance_m':minimum_lane_clearance,
+                'stop_crossings':crossings,
+                'red_body_violations':red_body_violations,'events':events,
                 'processed_frames':frames,'signal_transitions':signals,'guard_transitions':guard,
                 'camera_samples':images,'localization_samples':localization,'simulated_elapsed':None if first_time is None else rospy.Time.now().to_sec()-first_time}
         with io.open(os.path.join(out,'run_result.tmp'),'w',encoding='utf-8') as f:f.write(json.dumps(result,ensure_ascii=False,indent=2))

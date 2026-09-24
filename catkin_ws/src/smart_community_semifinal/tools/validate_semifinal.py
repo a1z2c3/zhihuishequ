@@ -99,6 +99,43 @@ class Contracts(unittest.TestCase):
         for row in manifest["recognition_assets"]:
             self.assertEqual(hashlib.sha256((PKG/"assets"/row["file"]).read_bytes()).hexdigest(),row["sha256"])
 
+    def test_scene_population_matches_current_rules(self):
+        layout=json.loads((PKG/"config/layout.json").read_text(encoding="utf-8"))
+        instances=json.loads((PKG/"config/scene_instances_for_evaluation_only.json").read_text(encoding="utf-8"))
+        people=[item for item in instances if item["name"].startswith("person_")]
+        self.assertEqual(len(people),16)
+        models=[item["model"] for item in people]
+        self.assertEqual(sum(model.startswith("resident_") for model in models),14)
+        self.assertEqual(sum(model.startswith("visitor_") for model in models),2)
+        population=layout["population"]
+        self.assertEqual(population["total"],16)
+        self.assertEqual(population["resident"],14)
+        self.assertEqual(population["visitor"],2)
+        self.assertEqual(sum(item["total"] for item in population["by_street"].values()),16)
+
+        def inside(point, polygon):
+            x,y=point;result=False
+            for i in range(len(polygon)):
+                x1,y1=polygon[i];x2,y2=polygon[(i+1)%len(polygon)]
+                if ((y1>y)!=(y2>y)) and x < (x2-x1)*(y-y1)/float(y2-y1)+x1:
+                    result=not result
+            return result
+
+        by_street={'A':[],'B':[],'unassigned':[]}
+        for item in people:
+            point=(item['x'],item['y'])
+            street='A' if inside(point,layout['a_polygon']) else \
+                   'B' if inside(point,layout['b_polygon']) else 'unassigned'
+            by_street[street].append(item)
+        self.assertFalse(by_street['unassigned'])
+        self.assertEqual(len(by_street['A']),8)
+        self.assertEqual(len(by_street['B']),8)
+        for street in ('A','B'):
+            self.assertEqual(sum(item['model'].startswith('resident_')
+                                 for item in by_street[street]),7)
+            self.assertEqual(sum(item['model'].startswith('visitor_')
+                                 for item in by_street[street]),1)
+
 
 def route_check():
     from validate_geometry import check

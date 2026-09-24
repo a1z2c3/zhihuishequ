@@ -1,15 +1,18 @@
 <?xml version="1.0"?>
 <launch>
   <arg name="image_topic" default="/camera/color/image_raw"/>
+  <arg name="camera_info_topic" default="/camera/color/camera_info"/>
   <arg name="evidence_dir" default="$(optenv HOME /tmp)/semifinal_evidence_v2"/>
   <!-- No fixed ROI is assumed valid at both crossings. Configure per camera view. -->
   <node pkg="smart_community_semifinal" type="official_perception_node.py" name="official_perception" output="screen">
     <param name="manifest" value="$(find smart_community_semifinal)/assets/manifest.json"/>
+    <param name="layout" value="$(find smart_community_semifinal)/config/layout.json"/>
     <param name="image_topic" value="$(arg image_topic)"/>
+    <param name="camera_info_topic" value="$(arg camera_info_topic)"/>
     <param name="evidence_dir" value="$(arg evidence_dir)"/>
   </node>
   <node pkg="smart_community_semifinal" type="signal_perception_node.py" name="signal_perception" output="screen">
-    <remap from="/camera/color/image_raw" to="$(arg image_topic)"/>
+    <param name="image_topic" value="$(arg image_topic)"/>
     <param name="layout" value="$(find smart_community_semifinal)/config/layout.json"/>
     <param name="urdf" value="$(find smart_community_semifinal)/urdf/semifinal_bot.urdf"/>
     <param name="evidence_dir" value="$(arg evidence_dir)"/>

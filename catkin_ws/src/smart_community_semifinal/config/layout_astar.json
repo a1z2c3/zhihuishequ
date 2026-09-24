@@ -1,0 +1,772 @@
+{
+  "schema_version": 2,
+  "signal_cycle": {
+    "period_s": 28.0,
+    "red_s": 10.0,
+    "green_s": 15.0,
+    "yellow_s": 3.0,
+    "light_2_offset_s": 7.0,
+    "offsets_s": {
+      "light_1": 0.0,
+      "light_2": 7.0
+    }
+  },
+  "field_size_m": [
+    4.2,
+    4.2
+  ],
+  "lane_width_m": 0.6,
+  "lane_safety_margin_m": 0.02,
+  "lane_centerline": [
+    [
+      3.78,
+      3.9
+    ],
+    [
+      2.78,
+      3.9
+    ],
+    [
+      1.45,
+      3.9
+    ],
+    [
+      0.9,
+      3.9
+    ],
+    [
+      0.3,
+      3.9
+    ],
+    [
+      0.3,
+      3.3
+    ],
+    [
+      0.3,
+      2.63
+    ],
+    [
+      0.96,
+      2.63
+    ],
+    [
+      1.36,
+      2.63
+    ],
+    [
+      1.36,
+      2.63
+    ],
+    [
+      1.95,
+      2.63
+    ],
+    [
+      1.95,
+      2.35
+    ],
+    [
+      1.95,
+      1.82
+    ],
+    [
+      1.95,
+      0.78
+    ],
+    [
+      1.95,
+      0.3
+    ],
+    [
+      3.15,
+      0.3
+    ],
+    [
+      3.15,
+      0.3
+    ],
+    [
+      3.15,
+      0.92
+    ],
+    [
+      3.15,
+      1.54
+    ],
+    [
+      3.15,
+      3.9
+    ],
+    [
+      3.78,
+      3.9
+    ]
+  ],
+  "coordinate_status": "dimension_constrained_reconstruction_pending_official_coordinate_confirmation",
+  "a_polygon": [
+    [
+      0.6,
+      3.6
+    ],
+    [
+      2.85,
+      3.6
+    ],
+    [
+      2.85,
+      0.6
+    ],
+    [
+      2.25,
+      0.6
+    ],
+    [
+      2.25,
+      3.0
+    ],
+    [
+      0.6,
+      3.0
+    ]
+  ],
+  "b_polygon": [
+    [
+      0.6,
+      0.6
+    ],
+    [
+      1.65,
+      0.6
+    ],
+    [
+      1.65,
+      2.25
+    ],
+    [
+      0.6,
+      2.25
+    ]
+  ],
+  "parking_boundary_x": 3.45,
+  "parking_open_above_y": 3.6,
+  "population": {
+    "total": 16,
+    "resident": 14,
+    "visitor": 2,
+    "by_street": {
+      "A": {
+        "total": 8,
+        "resident": 7,
+        "visitor": 1
+      },
+      "B": {
+        "total": 8,
+        "resident": 7,
+        "visitor": 1
+      }
+    }
+  },
+  "person_orientation_policy": {
+    "A": [
+      "north",
+      "south",
+      "west"
+    ],
+    "B": [
+      "north",
+      "east"
+    ]
+  },
+  "route": [
+    {
+      "name": "start",
+      "xy": [
+        3.78,
+        3.9
+      ],
+      "yaw": 180
+    },
+    {
+      "name": "approach_light_1",
+      "xy": [
+        2.78,
+        3.9
+      ],
+      "yaw": 180,
+      "gate": "light_1"
+    },
+    {
+      "name": "past_light_1",
+      "xy": [
+        1.45,
+        3.9
+      ],
+      "yaw": 180
+    },
+    {
+      "name": "street_a_north",
+      "xy": [
+        0.9,
+        3.9
+      ],
+      "yaw": -90,
+      "street": "A",
+      "observe": true,
+      "expected_category": "person"
+    },
+    {
+      "name": "top_left",
+      "xy": [
+        0.3,
+        3.9
+      ],
+      "yaw": 180
+    },
+    {
+      "name": "street_a_west",
+      "xy": [
+        0.3,
+        3.3
+      ],
+      "yaw": 0,
+      "street": "A",
+      "observe": true,
+      "expected_category": "person"
+    },
+    {
+      "name": "left_bottom",
+      "xy": [
+        0.3,
+        2.63
+      ],
+      "yaw": -90
+    },
+    {
+      "name": "street_b_west",
+      "xy": [
+        0.96,
+        2.63
+      ],
+      "yaw": -90,
+      "street": "B",
+      "observe": true,
+      "expected_category": "person"
+    },
+    {
+      "name": "street_a_south",
+      "xy": [
+        1.36,
+        2.63
+      ],
+      "yaw": 90,
+      "street": "A",
+      "observe": true,
+      "expected_category": "person"
+    },
+    {
+      "name": "street_b_east",
+      "xy": [
+        1.36,
+        2.63
+      ],
+      "yaw": -90,
+      "street": "B",
+      "observe": true,
+      "expected_category": "person"
+    },
+    {
+      "name": "inner_turn",
+      "xy": [
+        1.95,
+        2.63
+      ],
+      "yaw": 0
+    },
+    {
+      "name": "street_b_east_side",
+      "xy": [
+        1.95,
+        2.35
+      ],
+      "yaw": -138,
+      "street": "B",
+      "observe": true,
+      "expected_category": "person"
+    },
+    {
+      "name": "approach_light_2",
+      "xy": [
+        1.95,
+        1.82
+      ],
+      "yaw": -90,
+      "gate": "light_2"
+    },
+    {
+      "name": "past_light_2",
+      "xy": [
+        1.95,
+        0.78
+      ],
+      "yaw": -90
+    },
+    {
+      "name": "bottom_turn",
+      "xy": [
+        1.95,
+        0.3
+      ],
+      "yaw": -90
+    },
+    {
+      "name": "right_bottom",
+      "xy": [
+        3.15,
+        0.3
+      ],
+      "yaw": 0
+    },
+    {
+      "name": "parking_1",
+      "xy": [
+        3.15,
+        0.3
+      ],
+      "object_xy": [
+        3.833,
+        0.3
+      ],
+      "yaw": 0,
+      "observe": true,
+      "expected_category": "plate",
+      "expected_label": "苏AB8Q62"
+    },
+    {
+      "name": "parking_2",
+      "xy": [
+        3.15,
+        0.92
+      ],
+      "object_xy": [
+        3.833,
+        0.92
+      ],
+      "yaw": 0,
+      "observe": true,
+      "expected_category": "plate",
+      "expected_label": "鄂D7B5Q2"
+    },
+    {
+      "name": "parking_3",
+      "xy": [
+        3.15,
+        1.54
+      ],
+      "object_xy": [
+        3.833,
+        1.54
+      ],
+      "yaw": 0,
+      "observe": true,
+      "expected_category": "plate",
+      "expected_label": "苏APL12A"
+    },
+    {
+      "name": "right_top",
+      "xy": [
+        3.15,
+        3.9
+      ],
+      "yaw": 90
+    },
+    {
+      "name": "finish",
+      "xy": [
+        3.78,
+        3.9
+      ],
+      "yaw": 180
+    }
+  ],
+  "lights": [
+    {
+      "id": "light_1",
+      "xy": [
+        1.8,
+        3.88
+      ],
+      "yaw": 90
+    },
+    {
+      "id": "light_2",
+      "xy": [
+        1.95,
+        0.56
+      ],
+      "yaw": 180
+    }
+  ],
+  "stop_lines": [
+    {
+      "id": "light_1",
+      "point": [
+        2.44,
+        3.9
+      ],
+      "direction": [
+        -1,
+        0
+      ]
+    },
+    {
+      "id": "light_2",
+      "point": [
+        1.95,
+        1.49
+      ],
+      "direction": [
+        0,
+        -1
+      ]
+    }
+  ],
+  "assumptions": [
+    "The two diagrams are schematic and differ in proportions.",
+    "60 cm labels override pixel-derived distances.",
+    "Person artwork assignment and exact placements are illustrative, not specified by the diagram.",
+    "A arrows permit north/south/west; B arrows permit north/east. Card fronts and observation poses cover every permitted direction.",
+    "Light dimensions 0.64 x 0.14 m and overall 0.48 m are official; mounting locations are reconstructed."
+  ],
+  "planner": {
+    "algorithm": "A*",
+    "map_resolution_m": 0.02,
+    "inflation_clearance_m": 0.04,
+    "robot_radius_m": 0.2,
+    "inflation_radius_m": 0.24000000000000002,
+    "field_boundary_constrained": true,
+    "rule_zones_constrained": true,
+    "segments": [
+      {
+        "segment": 0,
+        "from": "start",
+        "to": "approach_light_1",
+        "grid_cells": 51,
+        "simplified_cells": 2,
+        "inserted": 0,
+        "start_cell": [
+          239,
+          42
+        ],
+        "goal_cell": [
+          189,
+          42
+        ]
+      },
+      {
+        "segment": 1,
+        "from": "approach_light_1",
+        "to": "past_light_1",
+        "grid_cells": 68,
+        "simplified_cells": 2,
+        "inserted": 0,
+        "start_cell": [
+          189,
+          42
+        ],
+        "goal_cell": [
+          122,
+          42
+        ]
+      },
+      {
+        "segment": 2,
+        "from": "past_light_1",
+        "to": "street_a_north",
+        "grid_cells": 28,
+        "simplified_cells": 2,
+        "inserted": 0,
+        "start_cell": [
+          122,
+          42
+        ],
+        "goal_cell": [
+          95,
+          42
+        ]
+      },
+      {
+        "segment": 3,
+        "from": "street_a_north",
+        "to": "top_left",
+        "grid_cells": 31,
+        "simplified_cells": 2,
+        "inserted": 0,
+        "start_cell": [
+          95,
+          42
+        ],
+        "goal_cell": [
+          65,
+          42
+        ]
+      },
+      {
+        "segment": 4,
+        "from": "top_left",
+        "to": "street_a_west",
+        "grid_cells": 31,
+        "simplified_cells": 2,
+        "inserted": 0,
+        "start_cell": [
+          65,
+          42
+        ],
+        "goal_cell": [
+          65,
+          72
+        ]
+      },
+      {
+        "segment": 5,
+        "from": "street_a_west",
+        "to": "left_bottom",
+        "grid_cells": 34,
+        "simplified_cells": 2,
+        "inserted": 0,
+        "start_cell": [
+          65,
+          72
+        ],
+        "goal_cell": [
+          65,
+          105
+        ]
+      },
+      {
+        "segment": 6,
+        "from": "left_bottom",
+        "to": "street_b_west",
+        "grid_cells": 34,
+        "simplified_cells": 2,
+        "inserted": 0,
+        "start_cell": [
+          65,
+          105
+        ],
+        "goal_cell": [
+          98,
+          105
+        ]
+      },
+      {
+        "segment": 7,
+        "from": "street_b_west",
+        "to": "street_a_south",
+        "grid_cells": 21,
+        "simplified_cells": 2,
+        "inserted": 0,
+        "start_cell": [
+          98,
+          105
+        ],
+        "goal_cell": [
+          118,
+          105
+        ]
+      },
+      {
+        "segment": 8,
+        "from": "street_a_south",
+        "to": "street_b_east",
+        "grid_cells": 1,
+        "simplified_cells": 1,
+        "inserted": 0,
+        "start_cell": [
+          118,
+          105
+        ],
+        "goal_cell": [
+          118,
+          105
+        ]
+      },
+      {
+        "segment": 9,
+        "from": "street_b_east",
+        "to": "inner_turn",
+        "grid_cells": 31,
+        "simplified_cells": 2,
+        "inserted": 0,
+        "start_cell": [
+          118,
+          105
+        ],
+        "goal_cell": [
+          148,
+          105
+        ]
+      },
+      {
+        "segment": 10,
+        "from": "inner_turn",
+        "to": "street_b_east_side",
+        "grid_cells": 15,
+        "simplified_cells": 2,
+        "inserted": 0,
+        "start_cell": [
+          148,
+          105
+        ],
+        "goal_cell": [
+          148,
+          119
+        ]
+      },
+      {
+        "segment": 11,
+        "from": "street_b_east_side",
+        "to": "approach_light_2",
+        "grid_cells": 28,
+        "simplified_cells": 2,
+        "inserted": 0,
+        "start_cell": [
+          148,
+          119
+        ],
+        "goal_cell": [
+          148,
+          146
+        ]
+      },
+      {
+        "segment": 12,
+        "from": "approach_light_2",
+        "to": "past_light_2",
+        "grid_cells": 53,
+        "simplified_cells": 2,
+        "inserted": 0,
+        "start_cell": [
+          148,
+          146
+        ],
+        "goal_cell": [
+          148,
+          198
+        ]
+      },
+      {
+        "segment": 13,
+        "from": "past_light_2",
+        "to": "bottom_turn",
+        "grid_cells": 25,
+        "simplified_cells": 2,
+        "inserted": 0,
+        "start_cell": [
+          148,
+          198
+        ],
+        "goal_cell": [
+          148,
+          222
+        ]
+      },
+      {
+        "segment": 14,
+        "from": "bottom_turn",
+        "to": "right_bottom",
+        "grid_cells": 61,
+        "simplified_cells": 2,
+        "inserted": 0,
+        "start_cell": [
+          148,
+          222
+        ],
+        "goal_cell": [
+          208,
+          222
+        ]
+      },
+      {
+        "segment": 15,
+        "from": "right_bottom",
+        "to": "parking_1",
+        "grid_cells": 1,
+        "simplified_cells": 1,
+        "inserted": 0,
+        "start_cell": [
+          208,
+          222
+        ],
+        "goal_cell": [
+          208,
+          222
+        ]
+      },
+      {
+        "segment": 16,
+        "from": "parking_1",
+        "to": "parking_2",
+        "grid_cells": 32,
+        "simplified_cells": 2,
+        "inserted": 0,
+        "start_cell": [
+          208,
+          222
+        ],
+        "goal_cell": [
+          208,
+          191
+        ]
+      },
+      {
+        "segment": 17,
+        "from": "parking_2",
+        "to": "parking_3",
+        "grid_cells": 32,
+        "simplified_cells": 2,
+        "inserted": 0,
+        "start_cell": [
+          208,
+          191
+        ],
+        "goal_cell": [
+          208,
+          160
+        ]
+      },
+      {
+        "segment": 18,
+        "from": "parking_3",
+        "to": "right_top",
+        "grid_cells": 119,
+        "simplified_cells": 2,
+        "inserted": 0,
+        "start_cell": [
+          208,
+          160
+        ],
+        "goal_cell": [
+          208,
+          42
+        ]
+      },
+      {
+        "segment": 19,
+        "from": "right_top",
+        "to": "finish",
+        "grid_cells": 32,
+        "simplified_cells": 2,
+        "inserted": 0,
+        "start_cell": [
+          208,
+          42
+        ],
+        "goal_cell": [
+          239,
+          42
+        ]
+      }
+    ]
+  }
+}

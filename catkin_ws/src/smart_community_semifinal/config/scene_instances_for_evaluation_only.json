@@ -2,7 +2,7 @@
   {
     "model": "resident_1",
     "name": "person_00",
-    "x": 0.75,
+    "x": 0.7,
     "y": 3.18,
     "z": 0.003,
     "yaw": 3.141592653589793
@@ -10,38 +10,62 @@
   {
     "model": "resident_7",
     "name": "person_01",
-    "x": 1.0,
+    "x": 0.86,
     "y": 3.18,
     "z": 0.003,
     "yaw": 3.141592653589793
   },
   {
-    "model": "visitor_F1",
+    "model": "resident_3",
     "name": "person_02",
-    "x": 1.15,
+    "x": 1.02,
+    "y": 3.18,
+    "z": 0.003,
+    "yaw": -1.5707963267948966
+  },
+  {
+    "model": "resident_4",
+    "name": "person_03",
+    "x": 1.16,
+    "y": 3.18,
+    "z": 0.003,
+    "yaw": -1.5707963267948966
+  },
+  {
+    "model": "visitor_F1",
+    "name": "person_04",
+    "x": 1.08,
     "y": 3.4,
     "z": 0.003,
     "yaw": 0
   },
   {
     "model": "resident_10",
-    "name": "person_03",
-    "x": 1.36,
+    "name": "person_05",
+    "x": 1.25,
     "y": 3.4,
     "z": 0.003,
     "yaw": 0
   },
   {
+    "model": "resident_5",
+    "name": "person_06",
+    "x": 1.42,
+    "y": 3.4,
+    "z": 0.003,
+    "yaw": -1.5707963267948966
+  },
+  {
     "model": "resident_16",
-    "name": "person_04",
-    "x": 1.57,
+    "name": "person_07",
+    "x": 1.59,
     "y": 3.4,
     "z": 0.003,
     "yaw": 0
   },
   {
     "model": "resident_2",
-    "name": "person_05",
+    "name": "person_08",
     "x": 0.76,
     "y": 1.95,
     "z": 0.003,
@@ -49,7 +73,7 @@
   },
   {
     "model": "resident_6",
-    "name": "person_06",
+    "name": "person_09",
     "x": 0.96,
     "y": 1.95,
     "z": 0.003,
@@ -57,7 +81,7 @@
   },
   {
     "model": "resident_9",
-    "name": "person_07",
+    "name": "person_10",
     "x": 1.15,
     "y": 1.95,
     "z": 0.003,
@@ -65,19 +89,43 @@
   },
   {
     "model": "visitor_F2",
-    "name": "person_08",
+    "name": "person_11",
     "x": 1.36,
+    "y": 1.95,
+    "z": 0.003,
+    "yaw": 1.5707963267948966
+  },
+  {
+    "model": "resident_14",
+    "name": "person_12",
+    "x": 1.54,
     "y": 1.95,
     "z": 0.003,
     "yaw": 3.141592653589793
   },
   {
-    "model": "resident_14",
-    "name": "person_09",
-    "x": 1.54,
-    "y": 1.95,
+    "model": "resident_11",
+    "name": "person_13",
+    "x": 0.76,
+    "y": 1.7,
     "z": 0.003,
     "yaw": 3.141592653589793
+  },
+  {
+    "model": "resident_12",
+    "name": "person_14",
+    "x": 1.15,
+    "y": 1.7,
+    "z": 0.003,
+    "yaw": 3.141592653589793
+  },
+  {
+    "model": "resident_13",
+    "name": "person_15",
+    "x": 1.54,
+    "y": 1.7,
+    "z": 0.003,
+    "yaw": 1.5707963267948966
   },
   {
     "model": "car_background",

@@ -1,174 +1,98 @@
-# 智慧社区自主巡检代码
+# 蒙的全队 · 智慧社区复赛 v2
 
-蒙的全队智慧社区复赛工程。此文件夹整理了 `batch1_run6` 所用版本的 ROS 功能包、编译脚本和运行资源。
+2026-09-23。本版本在 v1 复核基础上补齐车身走廊监督、红灯相位安全边界、受限逐字符车牌识别和 Melodic 回归测试。下面的运行命令和能力边界以当前代码为准；开发验收不等于比赛验收。
 
-整理时已核对该圈启动日志中的功能包路径，并逐文件比较教学虚拟机与本机源码，内容一致。运行代码保持原样；编译脚本限制为两路编译，便于教学虚拟机运行。
+本轮安全增强：车道约束按道路段带状区域并集和真实 footprint 四角判定，转弯处不再用圆形中心线距离误伤；预测横移将优先限幅致违规的横向分量，已越界时由 patrol 以 0.04 m/s 向内恢复，并在 30 秒内无法恢复时显式失败。车牌字符校验加入对称距离变换形状分数、位置槽约束和高门槛拒识；留一张牌不在模板库时输出 `?`，不把相似字伪报为确定结果。上述逻辑不绕过 guard，`/cmd_vel` 仍只有 guard 发布。
 
-## 代码能做什么
+## 运行
 
-机器人在 Gazebo 场景中从起点出发，按指定顺序经过 19 个航点，识别两处交通灯，在 A、B 街区停车观察并统计社区/非社区人员，再识别三个车位的车牌，最后返回起点。
-
-- **建图与定位**：激光雷达配合 Gmapping，使用 `map → base_footprint` 变换控制行驶。
-- **人物和车牌识别**：1280×960 RGB 相机；ORB 特征匹配、RANSAC 几何筛选和图案内容复核。根据物料尺寸与 PnP 估计人员位置，跨视角合并同一街区内的同一实例。
-- **交通灯识别**：从相机图像定位灯框、判断颜色；观察到红/黄转绿并连续确认新鲜绿灯后，检查是否有足够时间通过路口。
-- **任务控制**：依次行驶、转向、等待、观察、返回；观察至少停留 2 个仿真秒，并等待不少于 3 个不同时间戳的有效完成帧。
-- **速度约束**：`traffic_guard_node.py` 是唯一 `/cmd_vel` 发布者，检查车身、配置禁区、灯柱、停止线、传感器与命令的新鲜度。
-- **结果输出**：人员统计、车牌、带框图像和 JSON 事件；独立评价器记录任务状态、轨迹和停止线穿越情况。
-
-## 文件结构
-
-```text
-智慧社区代码_run6/
-├── README.md
-├── setup_and_check.sh                 # 环境检查、测试、编译和启动文件解析
-└── catkin_ws/
-    └── src/
-        └── smart_community_semifinal/
-            ├── CMakeLists.txt
-            ├── package.xml
-            ├── scripts/              # Python 节点与算法模块
-            ├── src/signal_plugin.cpp # Gazebo 信号灯插件
-            ├── launch/               # 场景、建图、感知、约束与巡检启动入口
-            ├── config/               # 路线、规则、场景配置
-            ├── urdf/                 # 机器人与传感器模型
-            ├── worlds/               # Gazebo 世界
-            ├── models/               # 场景模型、网格与贴图
-            ├── assets/               # 人物/车牌参考图库、资源清单
-            ├── maps/                 # 已保存的激光地图 PGM/YAML
-            └── tools/                # 运行评价、测试、几何校验和场景生成代码
-```
-
-主要入口是 `launch/patrol.launch`。`patrol_node.py` 管任务，`official_perception_node.py` 管人物/车牌与空间账本，`signal_perception_node.py` 管交通灯，`traffic_guard_node.py` 管最终速度。`tools/evaluate_run.py` 只负责评价，Gazebo 真值不进入控制和识别节点。
-
-图片、模型和地图是代码所用资源。文件夹不包含技术方案、论文、答辩稿、历史压缩包、运行日志或证据截图。
-
-## 环境与编译
-
-已运行环境：Ubuntu 18.04、ROS Melodic、Python 2.7.17、Gazebo 9、OpenCV 3.2.0、NumPy、Pillow 5.1.0。ROS 节点使用系统 Python 2.7；`build_official_scene.py`、`validate_geometry.py` 和 `validate_semifinal.py` 是 Python 3 开发工具，正常启动巡检不需要运行它们。
-
-将整个文件夹复制到虚拟机的 Linux 本地目录，例如 `~/smart_community_run6`。不要直接在 VMware 共享目录 `/mnt/hgfs` 内编译，以免符号链接或权限受限。如果共享目录名称仍为“智慧社区”，可执行：
+已用教学虚拟机验证：Ubuntu 18.04、ROS Melodic、Python 2.7.17、OpenCV 3.2.0、Pillow 5.1.0、Gazebo 9.0.0。节点用系统 `python`，不要安装不存在的 `python3-rospy`、`python3-tf` 或混用 Noetic。Python 3 仅用于开发机资源生成与几何审计。
 
 ```bash
-cp -a /mnt/hgfs/智慧社区/智慧社区代码_run6 ~/smart_community_run6
-cd ~/smart_community_run6
-```
-
-目标目录应是新目录。教学 VM 已有依赖时直接编译；缺少依赖时安装：
-
-```bash
+source /opt/ros/melodic/setup.bash
 sudo apt install ros-melodic-gazebo-ros-pkgs ros-melodic-gmapping \
   ros-melodic-map-server ros-melodic-robot-state-publisher \
   python-opencv python-numpy python-pil fonts-wqy-microhei
-
-source /opt/ros/melodic/setup.bash
 bash setup_and_check.sh
 source catkin_ws/devel/setup.bash
+roslaunch smart_community_semifinal patrol.launch
 ```
 
-`setup_and_check.sh` 恢复节点的可执行权限，执行 14 项运行契约、编译 C++ 插件并解析启动文件。复制到新目录后需重新编译，本文件夹不携带旧的 `build/`、`devel/` 或 `.pyc`。
-
-## 启动一圈
-
-在虚拟机桌面终端执行：
+无桌面环境另需安装 Xvfb。仅 `gui:=false` 不提供相机所需的 OpenGL 显示：
 
 ```bash
-cd ~/smart_community_run6
-source /opt/ros/melodic/setup.bash
-source catkin_ws/devel/setup.bash
-roslaunch smart_community_semifinal patrol.launch \
-  evidence_dir:="$HOME/semifinal_runs/run_$(date +%Y%m%d_%H%M%S)/evidence"
-```
-
-启动后自动完成巡检。任务状态可在另一个已加载环境的终端查看：
-
-```bash
-rostopic echo /semifinal/task_status
-rostopic echo /semifinal/street_summary
-```
-
-每条 `rostopic echo` 会持续显示，按 `Ctrl+C` 后再执行下一条。任务完成时状态为 `phase: done`、`index: 19`、`target: finish`。
-
-若无桌面显示，先安装并启动 Xvfb，再用 `gui:=false`：
-
-```bash
-sudo apt install xvfb
 Xvfb :99 -screen 0 1280x960x24 -nolisten tcp -ac &
 export DISPLAY=:99
 export LIBGL_ALWAYS_SOFTWARE=1
-roslaunch smart_community_semifinal patrol.launch gui:=false \
-  evidence_dir:="$HOME/semifinal_runs/run_$(date +%Y%m%d_%H%M%S)/evidence"
+roslaunch smart_community_semifinal patrol.launch gui:=false verbose:=true
 ```
 
-软件渲染下世界配置最多为 0.2 倍实时速度，一圈约需 18 分钟实际时间。`gui:=false` 只关闭 Gazebo 界面，相机仍需要可用的显示/OpenGL 环境。
+软件渲染不能达到 15 帧/墙钟秒。世界采用 1 ms 步长、200 Hz 物理更新上限，即**最多 0.2 倍实时速度**，为传感器处理留时间；配置 15 Hz 是仿真时间目标，实际值见日志。这是慢速集成测试配置，不是实时性能证明。提高物理更新率必须重测图像延迟与绿灯许可，不能简单放宽新鲜度阈值。
 
-## 同时记录完整评价
+## 闭环与接口
 
-只需看机器人运行时，使用上面的启动方式即可。需要像 `batch1_run6` 一样记录完整轨迹与评价时，先结束上一轮，在三个终端中依次执行下列步骤。每个终端都先执行：
+`patrol_node` 用 `map→base_footprint` 按指定顺序行驶，在观测点停稳后等待至少 3 个不同时间戳的稳定参考匹配帧。`official_perception_node` 对相机像素做参考匹配，用物料尺寸、CameraInfo 和 PnP 估计位置，经同一时刻 TF 进入 A/B 空间账本；车牌还要通过当前车位的独立空间归属校验。车牌路线完成与字符 OCR 分离：整牌参考匹配负责稳定观测，逐字符模板分类独立给出置信度、拒识和跨帧一致性状态；低置信度不会被伪造成确定结果。相机改为 1280×960 RGB，保持 4:3 视场，当前不渲染未使用的深度图。
+
+`signal_perception_node` 用灯具安装位置缩小搜索区，再从图像寻找亮灯圆和黑色外壳，发布 ROI 与灯色。安装位置不是灯色真值。`traffic_guard_node` 独占 `/cmd_vel`，检查定位、激光、命令超时、完整车身预测轨迹、车道走廊、灯柱、停止线及新鲜视觉许可。车道漆不进入激光地图；走廊约束由独立仲裁层根据 `lane_centerline`、真实车身 footprint 和预测扫掠轨迹执行。控制节点不订阅 `/gazebo/model_states` 或灯相位真值，不读 `scene_instances_for_evaluation_only.json`。
+
+Gmapping 的运动噪声与匹配步长按这个小场地的理想仿真里程计设置。默认参数曾在返回段产生约 6 cm 地图误差并触发车身约束停车，现有参数的实际误差见运行记录，不能照搬为实车配置。若移动/转向连续 40 仿真秒没有足够进展，任务输出 `motion_stalled` 并停车；真实障碍等待另有 90 秒上限。持续安全保持、等灯和观测分别有 90/90/25 仿真秒的失败上限，并有 600/600/180 墙钟秒兜底；短暂安全保持暂停等灯/观测计时。patrol 和 guard 用墙钟节拍继续检查与发布零速，不依赖暂停的仿真 `/clock` 唤醒。
+
+放行必须获得 3 个连续新鲜绿灯帧。绿灯起点来自目击有效红/黄→绿跳变；若此前已目击并锁定与配置周期一致的相位时钟，首次直见绿灯也可推算最近起点，但不会把当前帧误当作刚亮。未锁定时钟又未目击跳变则安全等待。丢帧/未知观测撤销当前许可，但不会凭空重置已验证的起点；红/黄立即撤销。短暂假红不能建立新绿灯起点。15 秒绿灯下界仅来自本仿真周期，**不是倒计时识别或任意灯具都成立的保证**。改灯 ID 需在 `signal_cycle.offsets_s` 显式配置对应偏移，否则相位时钟拒绝未知灯；修改周期还须同步检查世界插件和放行余时。进入路口后不会因灯离开视场而停在中央。标准 move_base 客户端在 approach 航点等待新鲜、匹配停止线的 guard `entry_ready` 后才发送过线 goal。
+
+| 话题 | 发布者 | 内容 |
+|---|---|---|
+| `/semifinal/cmd_vel_requested` | patrol | 请求速度 |
+| `/cmd_vel` | guard，唯一发布者 | 最终速度 |
+| `/semifinal/active_stop` | patrol | 停止线和清空约束 |
+| `/semifinal/observation` | patrol | 观测点、街区、停稳时间 |
+| `/semifinal/task_status` | patrol | 路线索引、阶段、失败原因 |
+| `/semifinal/signal_roi` | signal_perception | 图像灯框、来源时间戳 |
+| `/semifinal/visual_signal` | signal_perception | 灯色、分数、来源时间戳 |
+| `/semifinal/guard_status` | guard | 放行许可、停车原因 |
+| `/semifinal/events` | official_perception | 对应证据图的检测记录 |
+| `/semifinal/frame_status` | official_perception | 有效帧握手、墙钟耗时 |
+| `/semifinal/street_summary` | official_perception | A/B 社区与非社区人数 |
+
+标注图：`/semifinal/annotated`、`/semifinal/signal_annotated`。证据默认在 `~/semifinal_evidence_v2`，可用 `evidence_dir:=...` 指定，每次运行独立目录。JSON 与 PNG 共用来源帧编号/时间戳。分类分数未经概率校准。
+
+## 验证
 
 ```bash
-cd ~/smart_community_run6
-source /opt/ros/melodic/setup.bash
-source catkin_ws/devel/setup.bash
+# 目标 VM：运行契约，包含车身/灯柱/红灯安全边界的路线运动学测试
+python catkin_ws/src/smart_community_semifinal/tools/test_runtime.py
+# 目标 VM：车道走廊、逐字符 OCR、避障和导航合同
+python catkin_ws/src/smart_community_semifinal/tools/test_lane_geometry.py
+python catkin_ws/src/smart_community_semifinal/tools/test_plate_ocr.py
+python catkin_ws/src/smart_community_semifinal/tools/test_perception_contracts.py
+python catkin_ws/src/smart_community_semifinal/tools/test_obstacle_closed_loop.py
+python catkin_ws/src/smart_community_semifinal/tools/test_plan_route.py
+python catkin_ws/src/smart_community_semifinal/tools/test_navigation_contracts.py
+# 开发机 Python 3 + NumPy/OpenCV/Pillow
+python3 catkin_ws/src/smart_community_semifinal/tools/validate_geometry.py --out geometry.json
 ```
 
-终端 1：启动场景与各节点，暂不启动任务。下面用 `manual_run_01` 作为本次目录名，每次运行换一个新名称。
+当前 Melodic Python 2.7 回归基线为：运行契约 60 条、车道几何 10 条、车牌 OCR 12 条、感知契约 10 条、避障闭环 4 条、A* 规划 8 条、导航合同 5 条，共 109 条。车牌测试同时覆盖已知模板的旧 Gazebo 矫正裁片（3/3 正确）、留一牌未知字符拒识、形状候选保留和小角度旋转；这不是陌生牌开放集准确率。教学 VM 的整圈评价必须看每次 `INDEX.md`：路线完成要求参考匹配 quorum、独立车身/红灯越线和街区计数全部满足；OCR 作为独立质量通道单独报告，离线测试不替代集成验收。
+
+人物朝向按官方示意图的箭头约束建模：A 社区覆盖北、南、西三个方向，B 社区覆盖北、东两个方向。当前场景保持 A/B 各 8 人（每个社区 7 名社区人员、1 名非社区人员），并为侧向卡片配置独立观察航点；`layout.json` 中的 `person_orientation_policy` 与方向回归测试用于防止重新生成场景时退回单一朝向。
+
+几何工具检查四角投影、朝向、像素与车身，不达标退出 1；不是动力学或随机定位误差证明。Gazebo 放置服务采集的静态测试与全程自主测试分开报告。地图来源与覆盖见包内地图说明。
+
+另一个已 source 环境的终端可启动独立评价：
 
 ```bash
-roslaunch smart_community_semifinal patrol.launch start_task:=false \
-  evidence_dir:="$HOME/semifinal_runs/manual_run_01/evidence"
+python catkin_ws/src/smart_community_semifinal/tools/evaluate_run.py _output_dir:=$HOME/semifinal_evaluation
 ```
 
-终端 2：等场景加载后先启动评价器。
+评价端只读 Gazebo 真值，并记录状态、实际轨迹、灯相位、定位估计、检测事件与相机延迟。应在启动任务前运行以覆盖起点；它在任务完成/失败、700 仿真秒或1500墙钟秒时结束。`run_result.json` 的 `task.phase` 必须为 `done` 才能称任务完成，不能把评价进程退出当作成功。
 
-```bash
-python catkin_ws/src/smart_community_semifinal/tools/evaluate_run.py \
-  _output_dir:="$HOME/semifinal_runs/manual_run_01/evaluation"
-```
+教学 VM 上的一圈留证入口为 `bash vm_run_lap.sh`（可传保存目录；无桌面时先配置 Xvfb 和 `DISPLAY`）。标准导航链可用 `RUN_MODE=navigation bash vm_run_lap.sh` 单独留证，默认仍是 patrol。脚本先启动场景并等待机器人出现，再启动独立评价器并确认订阅，最后启动任务；每次创建独立 `docs/evidence/patrol_*` 或 `navigation_*`，保留场景/任务/评价日志、相机标注、源码 SHA-256、`run_result.json` 和结果索引。只有任务完成、两次绿灯越线、零实际车身/红灯跨线违规、本场景总计 14 个社区人员 + 2 个非社区人员以及三牌逐字核验齐全才标 PASS；侵入额外 2 cm 工程余量但未压实际车道线的位姿单列为告警。旧教学 VM PASS 证据对应历史场景，当前场景人数和几何已更新，必须重新跑圈后才能作为当前版本证据。
 
-终端 3：检查地图变换，看到连续输出后按 `Ctrl+C`，再启动任务。
+可选的保存地图全局规划器位于 `catkin_ws/src/smart_community_semifinal/tools/plan_route.py`。它从 `slam_map.pgm` 读取占用栅格，按车体半径和安全余量做膨胀，显式约束场地边界与规则区，使用禁止对角穿角的 A* 在语义航点之间生成中间航点，并保留红绿灯门控与观测元数据。规划结果写入 `config/layout_astar.json`；`navigation.launch` 默认仍使用经过运动学契约验证的 `layout.json`，验证通过后可传入 `route_layout:=...` 启用 A* 路线。全局 costmap 的可选 `navigation_map.pgm/.yaml` 是规则区叠加图，AMCL 仍使用原始 SLAM 图定位。
 
-```bash
-rosrun tf tf_echo map base_footprint
+## 能力边界
 
-rosrun smart_community_semifinal patrol_node.py \
-  _layout:="$(rospack find smart_community_semifinal)/config/layout.json"
-```
-
-完成后查看 `~/semifinal_runs/manual_run_01/evaluation/run_result.json`。评价器退出不一定代表成功，应确认 `task.phase == "done"`；同时检查 `body_violations` 和 `stop_crossings`。结束场景时回到终端 1 按 `Ctrl+C`。
-
-## 刚才跑的 batch1_run6
-
-以下数字重新读取自 `batch1_run6.tar.gz` 中的原始评价记录和图像事件，未使用上一轮 218.55 秒的结果。该归档位于原工程的运行记录目录，不随本代码文件夹分发。
-
-| 项目 | 本圈记录 |
-|---|---|
-| 最终任务 | `done`，完成 19 个航点，回到起终点 |
-| 评价器记录的仿真历时 | 210.653 秒，约 211 秒 |
-| 完成时的仿真时间戳 | 210.955 秒 |
-| 墙钟历时 | 1065.633 秒，约 17 分 46 秒 |
-| A 街区 | 社区 4 人、非社区 1 人，共 5 人 |
-| B 街区 | 社区 4 人、非社区 1 人，共 5 人 |
-| 三个车位 | 苏AB8Q62、鄂D7B5Q2、苏APL12A |
-| 停止线穿越 | 11.618 秒、116.615 秒，两次均为绿灯 |
-| 车身约束检查 | 2240 个实际位姿采样，配置禁区/灯柱相交 0 次 |
-| 归档图像 | 41 张物料图、5 张信号灯图 |
-
-实际路线为：起点 → 1 号路口 → A 北侧 → 左上角/左侧车道 → B 西侧 → A 南侧 → B 东侧 → 2 号路口 → 右下角/右侧车道 → 1、2、3 号车位 → 右上角 → 返回起点。
-
-七个观测点的实际识别记录如下。时间为图像采集的仿真时间戳，帧数按不同来源图像计数。
-
-| 观测点 | 图像时间范围（秒） | 帧数 | 识别内容 |
-|---|---:|---:|---|
-| A 北侧 `street_a_north` | 29.555–30.997 | 6 | resident_7、resident_1 |
-| B 西侧 `street_b_west` | 67.187–68.780 | 6 | resident_9、resident_6、resident_2 |
-| A 南侧 `street_a_south` | 81.238–82.758 | 6 | visitor_F1、resident_10、resident_16 |
-| B 东侧 `street_b_east` | 90.557–91.965 | 6 | resident_14、visitor_F2、resident_9 |
-| 1 号车位 `parking_1` | 144.585–145.985 | 6 | 苏AB8Q62 |
-| 2 号车位 `parking_2` | 159.193–160.433 | 5 | 鄂D7B5Q2 |
-| 3 号车位 `parking_3` | 174.243–175.611 | 6 | 苏APL12A |
-
-`resident_9` 在 B 街区两个视角中都被看到，空间账本最终只计一次。代码不是固定拍 6 帧：本圈 2 号车位实际为 5 帧，其他观测点为 6 帧；离开条件由停留时间、有效完成帧和人员空间确认共同决定。
-
-这里描述的是本圈实际结果。当前车牌识别依赖已知参考图，并非任意车牌 OCR；底盘与里程计是简化仿真，慢速运行也不等于实时或实车性能。`maps/` 保留此前同场景自主运行保存的 Gmapping 地图，不是本圈重新导出的地图；正常巡检会重新建图。
-
-人物、号牌、场景贴图来自提供的官方复赛物料，来源信息保留在 `assets/manifest.json`，按赛事授权范围使用。ROS、Gazebo、OpenCV 等依赖需要安装，不作为二进制随此文件夹分发。
+- 未标注坐标、人物位置和 0.145 m 身高是有状态标记的重建假设。
+- 21 张图库含 18 个人物图案和 3 张车牌；当前场景是 16 个人偶（14 个社区人员、2 个非社区人员）和 3 张车牌。车牌字符识别是受限物料域的透视切分/模板分类，以孔洞和左边缘形状排除已知易混字，并与整牌参考匹配交叉核验；低置信字符会拒识，陌生牌仍不等同于开放集通用 OCR。参考牌与识别牌不符会标记 `unexpected_label`，不会静默丢弃检测。
+- 底盘是 Gazebo 简化平面运动插件，里程计理想化；未验证真实麦轮接触动力学、打滑和实车定位。
+- 激光地图只反映真实几何碰撞体，不把地面线虚构成墙；规则区域另行建模。
+- 未完成冻结版本的 30 次随机相位整圈、断流故障注入及正式比赛视频。参赛编号、队员和最终四件套仍需补齐。
