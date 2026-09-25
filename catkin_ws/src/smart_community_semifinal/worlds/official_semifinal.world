@@ -11,7 +11,7 @@
 <include><uri>model://resident_1</uri><name>person_00</name><pose>0.700000 3.180000 0.003000 0 0 3.141593</pose></include>
 <include><uri>model://resident_7</uri><name>person_01</name><pose>0.860000 3.180000 0.003000 0 0 3.141593</pose></include>
 <include><uri>model://resident_3</uri><name>person_02</name><pose>1.020000 3.180000 0.003000 0 0 -1.570796</pose></include>
-<include><uri>model://resident_4</uri><name>person_03</name><pose>1.160000 3.180000 0.003000 0 0 -1.570796</pose></include>
+<include><uri>model://resident_4</uri><name>person_03</name><pose>1.080000 3.100000 0.003000 0 0 -2.443461</pose></include>
 <include><uri>model://visitor_F1</uri><name>person_04</name><pose>1.080000 3.400000 0.003000 0 0 0.000000</pose></include>
 <include><uri>model://resident_10</uri><name>person_05</name><pose>1.250000 3.400000 0.003000 0 0 0.000000</pose></include>
 <include><uri>model://resident_5</uri><name>person_06</name><pose>1.420000 3.400000 0.003000 0 0 -1.570796</pose></include>
@@ -19,7 +19,7 @@
 <include><uri>model://resident_2</uri><name>person_08</name><pose>0.760000 1.950000 0.003000 0 0 3.141593</pose></include>
 <include><uri>model://resident_6</uri><name>person_09</name><pose>0.960000 1.950000 0.003000 0 0 3.141593</pose></include>
 <include><uri>model://resident_9</uri><name>person_10</name><pose>1.150000 1.950000 0.003000 0 0 3.141593</pose></include>
-<include><uri>model://visitor_F2</uri><name>person_11</name><pose>1.360000 1.950000 0.003000 0 0 1.570796</pose></include>
+<include><uri>model://visitor_F2</uri><name>person_11</name><pose>1.360000 1.950000 0.003000 0 0 3.141593</pose></include>
 <include><uri>model://resident_14</uri><name>person_12</name><pose>1.540000 1.950000 0.003000 0 0 3.141593</pose></include>
 <include><uri>model://resident_11</uri><name>person_13</name><pose>0.760000 1.700000 0.003000 0 0 3.141593</pose></include>
 <include><uri>model://resident_12</uri><name>person_14</name><pose>1.150000 1.700000 0.003000 0 0 3.141593</pose></include>

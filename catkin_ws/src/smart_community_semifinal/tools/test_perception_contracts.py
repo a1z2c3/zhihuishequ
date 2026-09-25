@@ -9,6 +9,8 @@ PKG=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0,os.path.join(PKG,'scripts'))
 for name in ('rospy','tf','sensor_msgs','sensor_msgs.msg','std_msgs','std_msgs.msg'):
     sys.modules[str(name)]=types.ModuleType(str(name))
+sys.modules['rospy'].Duration=lambda value:value
+sys.modules['tf'].Exception=Exception
 sys.modules['sensor_msgs.msg'].Image=object
 sys.modules['sensor_msgs.msg'].CameraInfo=object
 sys.modules['std_msgs.msg'].String=object
@@ -104,6 +106,8 @@ class PerceptionContracts(unittest.TestCase):
 
     def test_plate_reference_match_requires_current_parking_bay_geometry(self):
         class Listener(object):
+            def waitForTransform(self,base,frame,stamp,duration):
+                return True
             def lookupTransform(self,base,frame,stamp):
                 return (0.,0.,0.),(0.,0.,0.,1.)
         node=Node.__new__(Node);node.plate_frames={};node.plate_reference_frames={}
@@ -156,6 +160,8 @@ class PerceptionContracts(unittest.TestCase):
     def test_person_commit_uses_current_image_for_tf_and_ledger(self):
         class Listener(object):
             calls=[]
+            def waitForTransform(self,base,frame,stamp,duration):
+                return True
             def lookupTransform(self,base,frame,stamp):
                 self.calls.append((base,frame,stamp))
                 return (0.,0.,0.),(0.,0.,0.,1.)

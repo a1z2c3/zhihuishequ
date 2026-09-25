@@ -77,6 +77,11 @@ class SignalNode(object):
         lamp=next((r for r in self.layout['lights'] if r['id']==light_id),None)
         if lamp is None:return result
         try:
+            # Camera stamps can lead the latest TF sample by a few
+            # milliseconds in Gazebo. Wait briefly for the exact transform so
+            # a transient TF race does not become an `unknown` signal frame.
+            self.listener.waitForTransform('map','base_footprint',
+                                           msg.header.stamp,rospy.Duration(.05))
             xyz,q=self.listener.lookupTransform('map','base_footprint',msg.header.stamp)
             yaw=tf.transformations.euler_from_quaternion(q)[2]
             points=card_corners(lamp['xy'][0],lamp['xy'][1],.34,math.radians(lamp['yaw']),.64,.14)

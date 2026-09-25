@@ -45,7 +45,7 @@ echo "Run evidence: $RUN_DIR"
     sort -z | xargs -0 sha256sum
 ) > "$RUN_DIR/source_sha256.txt"
 
-SCENE_PID=''; EVAL_PID=''; PATROL_PID=''
+SCENE_PID=''; EVAL_PID=''; PATROL_PID=''; HB_PID=''
 stop_process() {
   local pid="$1"
   [ -n "$pid" ] || return 0
@@ -61,6 +61,7 @@ stop_process() {
   wait "$pid" 2>/dev/null || true
 }
 cleanup() {
+  stop_process "$HB_PID"
   stop_process "$PATROL_PID"
   stop_process "$EVAL_PID"
   stop_process "$SCENE_PID"
@@ -79,19 +80,26 @@ else
     > "$RUN_DIR/scene.log" 2>&1 &
 fi
 SCENE_PID=$!
+echo "[1/5] 场景已启动（roslaunch pid=$SCENE_PID）。等待 Gazebo 出现机器人……（最多 120 秒）"
+echo "      日志: $RUN_DIR/scene.log"
 
 # Do not start the evaluator until the world and robot are available.
 ready=false
-for unused in $(seq 1 120); do
+for i in $(seq 1 120); do
   if ! kill -0 "$SCENE_PID" 2>/dev/null; then break; fi
   if timeout 3 rosservice call /gazebo/get_model_state semifinal_bot world \
       2>/dev/null | grep -q 'success: True'; then ready=true; break; fi
+  if [ $((i % 15)) -eq 0 ]; then
+    echo "      ……已等 ${i} 秒（冷启动 + 加载世界通常 20~60 秒，属正常）"
+  fi
   sleep 1
 done
 if [ "$ready" != true ]; then
   echo 'Gazebo robot did not become ready; see scene.log.' >&2
   exit 1
 fi
+echo "      [OK] 机器人已就绪（用时约 ${i} 秒）"
+echo "[2/5] 等待 map→base_footprint 变换就绪……（最多 180 秒，说明 gmapping 已开始出图）"
 if ! timeout 185 python - <<'PY'
 from __future__ import print_function
 import sys, time, rospy, tf
@@ -111,7 +119,9 @@ then
   echo 'Map-to-robot TF did not become ready; see scene.log.' >&2
   exit 1
 fi
+echo "      [OK] TF 已就绪"
 
+echo "[3/5] 启动独立评价器（必须先于任务，否则覆盖不到起点）……"
 timeout --signal=INT --kill-after=10s 1650s \
   python "$PKG/tools/evaluate_run.py" _output_dir:="$RUN_DIR" \
   > "$RUN_DIR/evaluator.log" 2>&1 &
@@ -127,7 +137,12 @@ if [ "$subscribed" != true ]; then
   echo 'Evaluator did not subscribe before task start; see evaluator.log.' >&2
   exit 1
 fi
+echo "      [OK] 评价器已订阅 /semifinal/task_status"
 
+echo "[4/5] 启动任务。整圈约 18~21 分钟墙钟（RTF≈0.2，慢是正常的）。"
+echo "      下面每 60 秒打一行心跳；想看细节请另开终端:"
+echo "        rostopic echo -n1 /semifinal/task_status"
+echo "        rostopic echo /semifinal/guard_status"
 if [ "$RUN_MODE" = navigation ]; then
   rosrun smart_community_semifinal move_base_waypoint_client.py \
     _layout:="$PKG/config/layout.json" > "$RUN_DIR/task.log" 2>&1 &
@@ -136,8 +151,29 @@ else
     _layout:="$PKG/config/layout.json" > "$RUN_DIR/task.log" 2>&1 &
 fi
 PATROL_PID=$!
+
+# Heartbeat: without it the script prints nothing for ~20 minutes and the
+# operator cannot tell "slow" from "stalled".  Phase/index are read back from
+# the same task_status the evaluator uses, so the two never disagree.
+START_TS=$(date +%s)
+(
+  set +e
+  while kill -0 "$EVAL_PID" 2>/dev/null; do
+    sleep 60
+    kill -0 "$EVAL_PID" 2>/dev/null || break
+    el=$(( $(date +%s) - START_TS ))
+    line=$(timeout 5 rostopic echo -n1 /semifinal/task_status 2>/dev/null | tr -d '\n' | tr -d '\\')
+    ph=$(printf '%s' "$line" | grep -o 'phase[": ]*[a-z]*' | head -1 | grep -o '[a-z]*$')
+    ix=$(printf '%s' "$line" | grep -o 'index[": ]*[0-9]*' | head -1 | grep -o '[0-9]*$')
+    printf '      [%s] 已跑 %d 分 %d 秒   phase=%s  index=%s\n' \
+      "$(date +%H:%M:%S)" "$(( el / 60 ))" "$(( el % 60 ))" "${ph:-?}" "${ix:-?}"
+  done
+) &
+HB_PID=$!
 wait "$EVAL_PID" || true
+kill "$HB_PID" 2>/dev/null || true
 EVAL_PID=''
+echo "[5/5] 评价器已结束，正在收尾（抓地图 + 写 INDEX.md）……"
 
 # Capture the map while the scene and gmapping are still alive.  The checked-in
 # map predates scene changes and must not be treated as current navigation data.

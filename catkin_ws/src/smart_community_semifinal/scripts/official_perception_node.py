@@ -164,6 +164,8 @@ class Node(object):
                 try:
                     position=planar_position(detection,K)
                     if position is None:raise ValueError('pnp_rejected')
+                    self.listener.waitForTransform('map',msg.header.frame_id,
+                                                   msg.header.stamp,rospy.Duration(.05))
                     xyz,q=self.listener.lookupTransform('map',msg.header.frame_id,
                                                         msg.header.stamp)
                     p=np.dot(tf.transformations.quaternion_matrix(q),
@@ -239,6 +241,8 @@ class Node(object):
         if not context.get('street'):
             self._reject(detection,'missing_expected_region');return False
         try:
+            self.listener.waitForTransform('map',msg.header.frame_id,
+                                           msg.header.stamp,rospy.Duration(.05))
             xyz,q=self.listener.lookupTransform('map',msg.header.frame_id,
                                                 msg.header.stamp)
             p=np.dot(tf.transformations.quaternion_matrix(q),

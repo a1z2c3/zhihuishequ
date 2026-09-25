@@ -133,13 +133,16 @@ def main():
         {"name":"past_light_1","xy":[1.45,3.90],"yaw":180},
         {"name":"street_a_north","xy":[0.90,3.90],"yaw":-90,"street":"A","observe":True,"expected_category":"person"},
         {"name":"top_left","xy":[0.30,3.90],"yaw":180},
-        {"name":"street_a_west","xy":[0.30,3.30],"yaw":0,"street":"A","observe":True,"expected_category":"person"},
+        # Offset the west observation by 10 cm so the two west-facing cards
+        # in the A row are not collinear in the camera projection.
+        {"name":"street_a_west","xy":[0.30,3.20],"yaw":0,"street":"A","observe":True,"expected_category":"person"},
         {"name":"left_bottom","xy":[0.30,2.63],"yaw":-90},
         {"name":"street_b_west","xy":[0.96,2.63],"yaw":-90,"street":"B","observe":True,"expected_category":"person"},
         {"name":"street_a_south","xy":[1.36,2.63],"yaw":90,"street":"A","observe":True,"expected_category":"person"},
         {"name":"street_b_east","xy":[1.36,2.63],"yaw":-90,"street":"B","observe":True,"expected_category":"person"},
         {"name":"inner_turn","xy":[1.95,2.63],"yaw":0},
-        {"name":"street_b_east_side","xy":[1.95,2.35],"yaw":-138,"street":"B","observe":True,"expected_category":"person"},
+        # A legal lane pose with a more normal view of the east-facing card.
+        {"name":"street_b_east_side","xy":[1.95,2.30],"yaw":-110,"street":"B","observe":True,"expected_category":"person"},
         {"name":"approach_light_2","xy":[1.95,1.82],"yaw":-90,"gate":"light_2"},
         {"name":"past_light_2","xy":[1.95,0.78],"yaw":-90},
         {"name":"bottom_turn","xy":[1.95,0.30],"yaw":-90},
@@ -219,12 +222,15 @@ def main():
         # west-facing cards, matching the three legal directions shown by
         # the official arrow mark.
         ("resident_1",.70,3.18,math.pi),("resident_7",.86,3.18,math.pi),
-        ("resident_3",1.02,3.18,-math.pi/2),("resident_4",1.16,3.18,-math.pi/2),
+        ("resident_3",1.02,3.18,-math.pi/2),
+        # Keep the full 16-person inventory, but separate this west-facing
+        # card from the adjacent row so its only legal view is not occluded.
+        ("resident_4",1.08,3.10,-math.radians(140)),
         ("visitor_F1",1.08,3.40,0),("resident_10",1.25,3.40,0),
         ("resident_5",1.42,3.40,-math.pi/2),("resident_16",1.59,3.40,0),
         # B (lower island): five north-facing and three east-facing cards.
         ("resident_2",.76,1.95,math.pi),("resident_6",.96,1.95,math.pi),
-        ("resident_9",1.15,1.95,math.pi),("visitor_F2",1.36,1.95,math.pi/2),
+        ("resident_9",1.15,1.95,math.pi),("visitor_F2",1.36,1.95,math.pi),
         ("resident_14",1.54,1.95,math.pi),
         ("resident_11",.76,1.70,math.pi),("resident_12",1.15,1.70,math.pi),
         ("resident_13",1.54,1.70,math.pi/2)]

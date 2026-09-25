@@ -40,7 +40,7 @@
     ],
     [
       0.3,
-      3.3
+      3.2
     ],
     [
       0.3,
@@ -64,7 +64,7 @@
     ],
     [
       1.95,
-      2.35
+      2.3
     ],
     [
       1.95,
@@ -227,7 +227,7 @@
       "name": "street_a_west",
       "xy": [
         0.3,
-        3.3
+        3.2
       ],
       "yaw": 0,
       "street": "A",
@@ -287,9 +287,9 @@
       "name": "street_b_east_side",
       "xy": [
         1.95,
-        2.35
+        2.3
       ],
-      "yaw": -138,
+      "yaw": -110,
       "street": "B",
       "observe": true,
       "expected_category": "person"

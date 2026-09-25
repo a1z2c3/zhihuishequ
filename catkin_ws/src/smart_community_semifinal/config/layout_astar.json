@@ -40,7 +40,7 @@
     ],
     [
       0.3,
-      3.3
+      3.2
     ],
     [
       0.3,
@@ -64,7 +64,7 @@
     ],
     [
       1.95,
-      2.35
+      2.3
     ],
     [
       1.95,
@@ -227,7 +227,7 @@
       "name": "street_a_west",
       "xy": [
         0.3,
-        3.3
+        3.2
       ],
       "yaw": 0,
       "street": "A",
@@ -287,9 +287,9 @@
       "name": "street_b_east_side",
       "xy": [
         1.95,
-        2.35
+        2.3
       ],
-      "yaw": -138,
+      "yaw": -110,
       "street": "B",
       "observe": true,
       "expected_category": "person"
@@ -515,7 +515,7 @@
         "segment": 4,
         "from": "top_left",
         "to": "street_a_west",
-        "grid_cells": 31,
+        "grid_cells": 36,
         "simplified_cells": 2,
         "inserted": 0,
         "start_cell": [
@@ -524,19 +524,19 @@
         ],
         "goal_cell": [
           65,
-          72
+          77
         ]
       },
       {
         "segment": 5,
         "from": "street_a_west",
         "to": "left_bottom",
-        "grid_cells": 34,
+        "grid_cells": 29,
         "simplified_cells": 2,
         "inserted": 0,
         "start_cell": [
           65,
-          72
+          77
         ],
         "goal_cell": [
           65,
@@ -611,7 +611,7 @@
         "segment": 10,
         "from": "inner_turn",
         "to": "street_b_east_side",
-        "grid_cells": 15,
+        "grid_cells": 18,
         "simplified_cells": 2,
         "inserted": 0,
         "start_cell": [
@@ -620,19 +620,19 @@
         ],
         "goal_cell": [
           148,
-          119
+          122
         ]
       },
       {
         "segment": 11,
         "from": "street_b_east_side",
         "to": "approach_light_2",
-        "grid_cells": 28,
+        "grid_cells": 25,
         "simplified_cells": 2,
         "inserted": 0,
         "start_cell": [
           148,
-          119
+          122
         ],
         "goal_cell": [
           148,

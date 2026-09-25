@@ -12,7 +12,8 @@ from patrol_core import Patrol,CrossingPolicy
 from image_geometry import planar_position,decode_image
 from signal_locator import locate_signal
 from traffic_detector_core import detect_signal
-from scene_geometry import body_violation,physical_obstacles
+from scene_geometry import (body_violation,physical_obstacles,camera_from_urdf,
+                            visible_card)
 from semifinal_core import (StreetLedger,EvidenceWriter,front_clearance,body_over_stop_line,scan_clearance,
                             integrate_twist_pose)
 from runtime_compat import monotonic,isfinite
@@ -60,10 +61,24 @@ class RuntimeContracts(unittest.TestCase):
         self.assertAlmostEqual(p.green_start,1.0)
         for t in [1.5,1.6,1.7]:send(p,'green',t)
         self.assertTrue(p.ready(1.7))
-        # A later green frame after a >max_gap interval also keeps the anchor.
         p.gate.reset();p.previous=None
         send(p,'green',2.2)
         self.assertAlmostEqual(p.green_start,1.0)
+
+    def test_signal_process_waits_for_exact_camera_transform(self):
+        source=os.path.join(PKG,'scripts','signal_perception_node.py')
+        with io.open(source,encoding='utf-8') as stream:
+            text=stream.read()
+        self.assertIn("waitForTransform('map','base_footprint'",text)
+        self.assertIn("rospy.Duration(.05)",text)
+
+    def test_object_perception_waits_before_exact_timestamp_tf_queries(self):
+        source=os.path.join(PKG,'scripts','official_perception_node.py')
+        with io.open(source,encoding='utf-8') as stream:
+            text=stream.read()
+        self.assertEqual(text.count("waitForTransform('map',msg.header.frame_id"),2)
+        self.assertEqual(text.count("lookupTransform('map',msg.header.frame_id"),2)
+        self.assertIn("rospy.Duration(.05)",text)
 
     def test_locked_phase_clock_recovers_direct_green_safely(self):
         cycle={'period_s':28.,'red_s':10.,'green_s':15.,'light_2_offset_s':7.}
@@ -737,6 +752,29 @@ class RuntimeContracts(unittest.TestCase):
             self.assertAlmostEqual(float(plugin.findtext('green')),float(cycle['green_s']))
             self.assertLessEqual(float(plugin.findtext('red'))+float(plugin.findtext('green')),
                                  float(plugin.findtext('period')))
+
+    def test_previously_missed_people_have_clear_legal_observation_views(self):
+        package=PKG
+        with io.open(os.path.join(package,'config','layout.json'),encoding='utf-8') as stream:
+            layout=json.load(stream)
+        with io.open(os.path.join(package,'assets','manifest.json'),encoding='utf-8') as stream:
+            manifest=json.load(stream)
+        assets={os.path.splitext(row['file'])[0]:row for row in manifest['recognition_assets']}
+        with io.open(os.path.join(package,'config','scene_instances_for_evaluation_only.json'),encoding='utf-8') as stream:
+            instances=json.load(stream)
+        camera=camera_from_urdf(os.path.join(package,'urdf','semifinal_bot.urdf'))
+        obstacles=physical_obstacles(os.path.join(package,'worlds','official_semifinal.world'))
+        expected={'person_03':'street_a_west','person_15':'street_b_east_side'}
+        for instance_name,view_name in expected.items():
+            obj=next(row for row in instances if row['name']==instance_name)
+            asset=assets[obj['model']]
+            view=next(row for row in layout['route'] if row['name']==view_name)
+            pose=tuple(view['xy'])+(math.radians(view['yaw']),)
+            self.assertIsNone(body_violation(pose,layout,obstacles),instance_name)
+            result=visible_card(obj,asset['width_m'],asset['height_m'],pose,camera)
+            self.assertIsNotNone(result,instance_name)
+            self.assertGreaterEqual(result['front_cosine'],.55,instance_name)
+            self.assertGreaterEqual(result['long_pixels'],180.,instance_name)
 
     def test_signal_plugin_has_no_unbound_sdf_runtime_reference(self):
         path=os.path.join(PKG,'src','signal_plugin.cpp')
