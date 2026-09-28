@@ -9,7 +9,7 @@ link_directories(${GAZEBO_LIBRARY_DIRS})
 add_library(semifinal_signal SHARED src/signal_plugin.cpp)
 target_link_libraries(semifinal_signal ${GAZEBO_LIBRARIES})
 # Runtime nodes support the stock Python 2.7 ROS Melodic environment.
-install(PROGRAMS scripts/official_perception_node.py scripts/traffic_guard_node.py scripts/signal_perception_node.py scripts/patrol_node.py scripts/move_base_waypoint_client.py
+install(PROGRAMS scripts/official_perception_node.py scripts/traffic_guard_node.py scripts/signal_perception_node.py scripts/patrol_node.py scripts/move_base_waypoint_client.py scripts/patrol_dashboard.py
         DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
 install(FILES scripts/reference_detector.py scripts/plate_ocr.py scripts/semifinal_core.py scripts/traffic_detector_core.py scripts/runtime_compat.py scripts/patrol_core.py scripts/scene_geometry.py scripts/image_geometry.py scripts/signal_locator.py scripts/navigation_core.py
         DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})

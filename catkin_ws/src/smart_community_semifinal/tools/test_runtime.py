@@ -499,6 +499,211 @@ class RuntimeContracts(unittest.TestCase):
         with io.open(os.path.join(PKG,'config','layout.json'),encoding='utf-8') as stream:
             self.assertEqual(json.load(stream)['field_size_m'],[4.2,4.2])
 
+    def test_dashboard_is_optional_and_read_only(self):
+        """The status panel must never be able to affect a lap.
+
+        It is a convenience view for the demo video, so it has to stay a pure
+        subscriber: any publisher in it, or any launch/runner that starts it,
+        would put it on the critical path and could change the outcome of the
+        frozen-version runs.  It is also the only place in the package that
+        pads mixed CJK/ASCII columns, so its display-width helper is pinned too.
+        """
+        path=os.path.join(PKG,'scripts','patrol_dashboard.py')
+        with io.open(path,encoding='utf-8') as stream:
+            text=stream.read()
+        # 只订阅，不发布
+        self.assertNotIn('rospy.Publisher',text)
+        self.assertNotIn('.publish(',text)
+        self.assertEqual(text.count('rospy.Subscriber'),6)
+        # 不在任何 launch 里，也不被跑圈脚本拉起
+        launch_dir=os.path.join(PKG,'launch')
+        for name in sorted(os.listdir(launch_dir)):
+            if not name.endswith('.launch'):
+                continue
+            with io.open(os.path.join(launch_dir,name),encoding='utf-8') as stream:
+                self.assertNotIn('patrol_dashboard',stream.read(),
+                                 '%s must not start the dashboard'%name)
+        root=os.path.dirname(os.path.dirname(os.path.dirname(PKG)))
+        for name in ('vm_run_lap.sh','vm_record_lap.sh'):
+            runner=os.path.join(root,name)
+            if not os.path.isfile(runner):
+                continue
+            with io.open(runner,encoding='utf-8') as stream:
+                self.assertNotIn('patrol_dashboard',stream.read(),
+                                 '%s must not start the dashboard'%name)
+        # 已注册进 install(PROGRAMS ...)
+        with io.open(os.path.join(PKG,'CMakeLists.txt'),encoding='utf-8') as stream:
+            cmake=stream.read()
+        self.assertIn('scripts/patrol_dashboard.py',cmake)
+        # 中英混排按显示宽度补位（CJK 算 2 列）
+        self.assertIn('def _dwidth(',text)
+        self.assertIn('def _pad(',text)
+        # 两种解释器都要能写 stdout
+        self.assertIn('def _emit(',text)
+
+    def test_dashboard_never_calls_str_on_json_values(self):
+        """py2 的 str(u'苏') 会按 ASCII 编码并抛 UnicodeEncodeError。
+
+        面板里的 phase / target / label / 车牌文字都来自 json.loads，
+        在 py2 下全是 unicode。只要出现一次 str(unicode) 就会让面板在
+        VM 上直接崩掉——而 py3 的 str(unicode) 是合法的，所以本地用 py3
+        测是测不出来的（这正是它第一次逃过检查的原因）。
+        这里做静态扫描，并把文档字符串排除掉。
+        """
+        path=os.path.join(PKG,'scripts','patrol_dashboard.py')
+        with io.open(path,encoding='utf-8') as stream:
+            text=stream.read()
+        # 去掉模块与函数的文档字符串，避免注释里的示例被误判
+        stripped=re.sub(r'"""[\s\S]*?"""','',text)
+        offenders=[]
+        for number,line in enumerate(stripped.splitlines(),1):
+            if 'isinstance' in line or line.strip().startswith('#'):
+                continue
+            if re.search(r'(?<![\w.])str\s*\(',line):
+                offenders.append('%d: %s'%(number,line.strip()))
+        self.assertEqual(offenders,[],'py2 would raise on: %s'%offenders)
+        self.assertIn('def _text(',text)
+
+    def test_dashboard_renders_chinese_payloads(self):
+        """渲染路径必须原样保留中文，不能丢字或抛异常。
+
+        这是静态扫描的补充：静态扫描管"没有 str(unicode)"，
+        这里管"有中文时渲染本身是对的"。真正的 py2 验证只能在 VM 上做——
+        跑 `rosrun smart_community_semifinal patrol_dashboard.py --self-test`，
+        因为本机只有 py3，而 py3 的 str(unicode) 本来就是合法的，
+        所以本地跑不出 py2 的那个坑（这正是它第一次逃过检查的原因）。
+        """
+        import json as _json
+        import types
+        # 本机没有 ROS：给 exec 补最小桩，只在缺失时注入
+        if 'rospy' not in sys.modules:
+            stub=types.ModuleType('rospy')
+            stub.Rate=lambda hz: type('R',(),{'sleep':staticmethod(lambda: None)})()
+            stub.Subscriber=lambda *a,**kw: None
+            stub.init_node=lambda *a,**kw: None
+            stub.is_shutdown=lambda: True
+            sys.modules['rospy']=stub
+        if 'std_msgs.msg' not in sys.modules:
+            pkg=types.ModuleType('std_msgs');msg=types.ModuleType('std_msgs.msg')
+            msg.String=type('String',(object,),{'__init__':lambda self,data=None:setattr(self,'data',data)})
+            pkg.msg=msg
+            sys.modules['std_msgs']=pkg;sys.modules['std_msgs.msg']=msg
+        path=os.path.join(PKG,'scripts','patrol_dashboard.py')
+        module=types.ModuleType('dashboard_under_test')
+        module.__file__=path
+        # ★ 必须按【字节】读：py2 的 io.open(...).read() 返回 unicode，
+        # 而 py2 的 compile() 拒绝"带 # -*- coding: utf-8 -*- 声明的 unicode 源"，
+        # 会报 SyntaxError: encoding declaration in Unicode string。
+        # 按 'rb' 读出来是字节，py2/py3 的 compile 都能正确处理编码声明。
+        with io.open(path,'rb') as stream:
+            source=stream.read()
+        exec(compile(source,path,'exec'),module.__dict__)
+
+        dashboard=module.Dashboard(plain=True)
+        samples=[
+            (dashboard.on_task,{'phase':u'观测','index':17,
+                                'target':u'停车位二','stamp':199.4,'error':None}),
+            (dashboard.on_streets,{'A':{'total':8,'resident':7,'visitor':1},
+                                   'B':{'total':8,'resident':7,'visitor':1}}),
+            (dashboard.on_signal,{'light_id':'light_1','state':'green'}),
+            (dashboard.on_guard,{'forward_obstacle':False,'left_free':True,
+                                 'right_free':True}),
+            (dashboard.on_plates,{u'苏AB8Q62':5,u'苏DB812A':5,u'鄂DP8522':5}),
+            (dashboard.on_events,{'stamp':199.4,'detections':[
+                {'label':u'resident_14','category':'resident','confidence':0.87},
+                {'label':u'苏DB812A','category':'plate','confidence':0.92}]}),
+        ]
+        for callback,payload in samples:
+            callback(type('M',(),{'data':_json.dumps(payload,ensure_ascii=False)})())
+        rendered=dashboard.render()
+        self.assertIn(u'苏DB812A',rendered)
+        self.assertIn(u'停车位二',rendered)
+        self.assertIn(u'A 街区',rendered)
+        self.assertIn(u'社区人员',rendered)
+
+    def test_dashboard_renders_plate_summary_dicts(self):
+        """plate_summary 的值是 OCR 结果字典，不是计数。
+
+        official_perception_node 发的是 dict(plate_results)，
+        每个值形如 {text, complete, pending_slots}。面板最初按 {label: 计数}
+        写，结果把整个字典打到屏幕上（VM 上实测出现过）。
+        这里同时覆盖"字典"和"计数"两种形态，防止回归。
+        """
+        import json as _json
+        import types
+        if 'rospy' not in sys.modules:
+            stub=types.ModuleType('rospy')
+            stub.Rate=lambda hz: type('R',(),{'sleep':staticmethod(lambda: None)})()
+            stub.Subscriber=lambda *a,**kw: None
+            stub.init_node=lambda *a,**kw: None
+            stub.is_shutdown=lambda: True
+            sys.modules['rospy']=stub
+        if 'std_msgs.msg' not in sys.modules:
+            pkg=types.ModuleType('std_msgs');msg=types.ModuleType('std_msgs.msg')
+            msg.String=type('String',(object,),{'__init__':lambda self,data=None:setattr(self,'data',data)})
+            pkg.msg=msg
+            sys.modules['std_msgs']=pkg;sys.modules['std_msgs.msg']=msg
+        path=os.path.join(PKG,'scripts','patrol_dashboard.py')
+        module=types.ModuleType('dashboard_under_test')
+        module.__file__=path
+        with io.open(path,'rb') as stream:
+            source=stream.read()
+        exec(compile(source,path,'exec'),module.__dict__)
+        dashboard=module.Dashboard(plain=True)
+        def feed(callback,payload):
+            callback(type('M',(),{'data':_json.dumps(payload,ensure_ascii=False)})())
+        # 真实形态：OCR 结果字典
+        feed(dashboard.on_plates,{
+            u'苏AB8Q62':{u'text':u'苏AB8Q62',u'complete':True,u'pending_slots':[]},
+            u'苏DB812A':{u'text':u'?DB812A',u'complete':False,u'pending_slots':[1]}})
+        rendered=dashboard.render()
+        self.assertIn(u'苏AB8Q62 ✓',rendered)
+        self.assertIn(u'苏DB812A …待1',rendered)
+        self.assertNotIn(u'pending_slots',rendered,
+                         'must not dump the raw OCR dict')
+        # 兼容形态：计数
+        dashboard.on_plates(type('M',(),{'data':_json.dumps(
+            {u'苏AB8Q62':5},ensure_ascii=False)})())
+        self.assertIn(u'苏AB8Q62 ×5',dashboard.render())
+
+    def test_dashboard_warns_when_no_topic_is_received(self):
+        """面板一条消息都收不到时，必须明确说明原因。
+
+        VM 上实测过：面板起在 roscore 之前，订阅注册不上，
+        界面全是 "?"，看着像坏了。现在超过 5 秒没收到任何消息就给出
+        排查提示，省得把"没连上"误判成"面板有 bug"。
+        """
+        import types
+        if 'rospy' not in sys.modules:
+            stub=types.ModuleType('rospy')
+            stub.Rate=lambda hz: type('R',(),{'sleep':staticmethod(lambda: None)})()
+            stub.Subscriber=lambda *a,**kw: None
+            stub.init_node=lambda *a,**kw: None
+            stub.is_shutdown=lambda: True
+            sys.modules['rospy']=stub
+        if 'std_msgs.msg' not in sys.modules:
+            pkg=types.ModuleType('std_msgs');msg=types.ModuleType('std_msgs.msg')
+            msg.String=type('String',(object,),{'__init__':lambda self,data=None:setattr(self,'data',data)})
+            pkg.msg=msg
+            sys.modules['std_msgs']=pkg;sys.modules['std_msgs.msg']=msg
+        path=os.path.join(PKG,'scripts','patrol_dashboard.py')
+        module=types.ModuleType('dashboard_under_test')
+        module.__file__=path
+        with io.open(path,'rb') as stream:
+            source=stream.read()
+        exec(compile(source,path,'exec'),module.__dict__)
+        dashboard=module.Dashboard(plain=True)
+        # 刚启动不到 5 秒：不告警
+        self.assertNotIn(u'还没收到任何话题消息',dashboard.render())
+        # 假装已经跑了 10 秒且一条都没收到：必须告警
+        dashboard.started=module.time.time()-10.0
+        rendered=dashboard.render()
+        self.assertIn(u'还没收到任何话题消息',rendered)
+        self.assertIn(u'rostopic list',rendered)
+        # 收到一条之后：告警消失
+        dashboard.on_task(type('M',(),{'data':'{"phase":"travel","index":3}'})())
+        self.assertNotIn(u'还没收到任何话题消息',dashboard.render())
+
     def test_late_green_and_wrong_light_cannot_authorize(self):
         p=CrossingPolicy();p.arm(stop());send(p,'red',1.)
         for t in np.arange(1.1,9.,.1):send(p,'green',float(t))

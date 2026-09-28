@@ -71,7 +71,7 @@ python catkin_ws/src/smart_community_semifinal/tools/test_navigation_contracts.p
 python3 catkin_ws/src/smart_community_semifinal/tools/validate_geometry.py --out geometry.json
 ```
 
-当前 Melodic Python 2.7 回归基线为：运行契约 75 条、车道几何 10 条、车牌 OCR 13 条、感知契约 10 条、避障闭环 5 条、A* 规划 8 条、导航合同 5 条，共 126 条。车牌测试同时覆盖已知模板的旧 Gazebo 矫正裁片（3/3 正确）、留一牌未知字符拒识、形状候选保留和小角度旋转；这不是陌生牌开放集准确率。教学 VM 的整圈评价必须看每次 `INDEX.md`：路线完成要求参考匹配 quorum、独立车身/红灯越线和街区计数全部满足；OCR 作为独立质量通道单独报告，离线测试不替代集成验收。
+当前 Melodic Python 2.7 回归基线为：运行契约 80 条、车道几何 10 条、车牌 OCR 13 条、感知契约 10 条、避障闭环 5 条、A* 规划 8 条、导航合同 5 条，共 131 条。车牌测试同时覆盖已知模板的旧 Gazebo 矫正裁片（3/3 正确）、留一牌未知字符拒识、形状候选保留和小角度旋转；这不是陌生牌开放集准确率。教学 VM 的整圈评价必须看每次 `INDEX.md`：路线完成要求参考匹配 quorum、独立车身/红灯越线和街区计数全部满足；OCR 作为独立质量通道单独报告，离线测试不替代集成验收。
 
 人物朝向按官方示意图的箭头约束建模：A 社区覆盖北、南、西三个方向，B 社区覆盖北、东两个方向。当前场景保持 A/B 各 8 人（每个社区 7 名社区人员、1 名非社区人员），并为侧向卡片配置独立观察航点；`layout.json` 中的 `person_orientation_policy` 与方向回归测试用于防止重新生成场景时退回单一朝向。
 
@@ -95,5 +95,6 @@ python catkin_ws/src/smart_community_semifinal/tools/evaluate_run.py _output_dir
 - 21 张图库含 18 个人物图案和 3 张车牌；当前场景是 16 个人偶（14 个社区人员、2 个非社区人员）和 3 张车牌。**三张车牌中只有一张是官方示例（苏AB8Q62），另两张（苏DB812A、鄂DP8522）是随机号码**，由 `tools/make_random_plates.py` 从示例牌逐槽位剪字符重组合而成——字体与示例一致，因此字符 OCR 仍能逐字读出（`test_random_plates_are_read_character_by_character` 强制）。车牌字符识别是受限物料域的透视切分/模板分类，以孔洞和左边缘形状排除已知易混字，并与整牌参考匹配交叉核验；低置信字符会拒识，陌生牌仍不等同于开放集通用 OCR。参考牌与识别牌不符会标记 `unexpected_label`，不会静默丢弃检测。
 - 底盘是 Gazebo 简化平面运动插件，里程计理想化；未验证真实麦轮接触动力学、打滑和实车定位。
 - 激光地图只反映真实几何碰撞体，不把地面线虚构成墙；规则区域另行建模。
+- 另有**可选的实时状态面板** `scripts/patrol_dashboard.py`：只订阅已有话题、不发布、不被任何 launch 或跑圈脚本拉起，因此**开不开都不影响跑圈结果**。演示/录像时另开终端 `rosrun smart_community_semifinal patrol_dashboard.py` 即可看到航点、红绿灯、街区人数、车牌与最近识别；`--self-test` 可不起仿真自检渲染。
 - 场地四周有一圈**包围赛道的围墙**（`field_wall_*`，厚 5 mm、高 0.50 m，激光面 z=0.125 m 能打到），满足培训材料对"可被雷达识别到的墙体"的要求。围墙内表面在 **场外 0.40 m**：顶层车道中心 y=3.90，而机器人合法包络可达 ±0.28 m、guard 敏感窗 0.2735 m，墙若贴在场边（4.20）会让 **30.5%** 的合法位姿把墙读成侧向障碍并触发假避障；外移到 4.60 后，5037 个合法位姿的 `forward_obstacle`/`left_free`/`right_free` **零变化**（`test_field_wall_encloses_the_track_stays_out_of_the_guard_window` 强制）。地板仍是 4.2 m × 4.2 m。
 - 未完成冻结版本的 30 次随机相位整圈、断流故障注入及正式比赛视频。参赛编号、队员和最终四件套仍需补齐。
