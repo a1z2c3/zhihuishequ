@@ -17,6 +17,13 @@ class Patrol(object):
         # Avoidance is an event, not a timer-based detour.  The selected side
         # remains locked until the obstacle rear has cleared the footprint.
         self.avoid_shift=AVOID_SHIFT;self.avoid_speed=.08
+        # Keep a small forward component during a side-step.  A pure lateral
+        # command can stall against a costmap corner; the guard still checks
+        # the swept footprint before publishing it.
+        # Side-step must keep making longitudinal progress.  The guard caps
+        # the final command and validates its swept footprint, so this value
+        # improves throughput without weakening collision/lane checks.
+        self.avoid_forward_speed=.060
         self.avoid_side=None;self.avoid_start_pose=None
         self.avoid_rear_x=None
         self.avoid_min_until=None;self.avoid_deadline=None
@@ -207,7 +214,7 @@ class Patrol(object):
                     self.was_blocked=True;self.progress_time=now
                     return (0.,0.,0.)
             if abs(progress)<self.avoid_shift:
-                return (0.,sign*self.avoid_speed,0.)
+                return (self.avoid_forward_speed,sign*self.avoid_speed,0.)
             # Never keep crawling through the goal while offset.  Recenter
             # first, then let the normal travel/orient completion logic run.
             if not recenter_clear:
@@ -222,7 +229,7 @@ class Patrol(object):
                 # including its rear edge, has passed the robot.
                 return (min(self.speed,.08),0.,0.)
             if self.avoid_min_until is None or now<self.avoid_min_until:
-                return (0.,sign*self.avoid_speed,0.)
+                return (self.avoid_forward_speed,sign*self.avoid_speed,0.)
             self.phase='recenter';self._reset_motion_progress(now,'recenter')
 
         if self.phase=='recenter':
@@ -285,11 +292,21 @@ class Patrol(object):
 class CrossingPolicy(object):
     """The configured green-duration lower bound is a simulation assumption.
 
-    A witnessed red/yellow -> green transition establishes both the current
-    onset and (when configured) a simulation-phase clock.  Brief perception
-    gaps revoke the current frame quorum but preserve that verified onset;
-    unknown green without a locked clock remains fail-safe and cannot invent
-    a full remaining green interval.
+    Entry needs an onset it can trust.  Two cycle edges can supply one:
+
+      * a witnessed red/yellow -> green transition, anchored at the last
+        non-green frame; or
+      * a witnessed red onset, anchored at the first red frame, because red
+        occupies phase [0, red_s) and therefore pins the cycle start directly.
+
+    Both paths require the red episode to have been observed for
+    min_red_observation seconds, so a single misclassified red frame can
+    anchor neither.  Either lock lets a later first-sight green be resolved
+    against the configured period, which is what keeps the robot moving when
+    it happens to arrive inside the green window.  Brief perception gaps
+    revoke the current frame quorum but preserve a verified onset; unknown
+    green without any lock remains fail-safe and cannot invent a full
+    remaining green interval.
     """
     def __init__(self,signal_cycle=None):
         self.gate=GreenGate();self.stop=None;self.mode='unarmed';self.previous=None
@@ -325,6 +342,12 @@ class CrossingPolicy(object):
             raise ValueError('invalid signal clock offsets')
         self.clock_offsets=dict((key,float(value)) for key,value in offsets.items())
         self.clock_origin=None
+        # A witnessed red episode is also a cycle edge (red starts at phase 0),
+        # so it can lock the same simulation-phase clock.  The candidate is only
+        # promoted once the episode has run for min_red_observation, which is
+        # exactly the guard that already rejects one-frame false reds -- a
+        # spurious red can therefore never anchor the clock.
+        self.red_candidate=None
 
     def arm(self,stop):
         if self.stop and self.stop['id']==stop['id']:return
@@ -338,6 +361,7 @@ class CrossingPolicy(object):
         if not isfinite(stop['min_green_seconds']) or stop['min_green_seconds']<=0:raise ValueError('green bound')
         self.stop=stop;self.mode='approach';self.gate.reset();self.previous=None
         self.green_start=None;self.red_start=None;self.failure=None
+        self.red_candidate=None
 
     def signal(self,s,now):
         if self.stop is None or s.get('light_id')!=self.stop['id']:return
@@ -366,7 +390,22 @@ class CrossingPolicy(object):
             if (self.previous is None or self.previous[0] != 'red' or
                     gap is None or gap > self.red_gap_limit or
                     self.red_start is None):
+                # A real cycle edge needs a preceding non-red observation that
+                # was itself continuous; a red that appears straight after a
+                # gap or after unknown frames gets no candidate.
+                if (self.previous is not None and
+                        self.previous[0] in ('green','yellow') and
+                        gap is not None and gap <= self.red_gap_limit):
+                    self.red_candidate=stamp
+                else:
+                    self.red_candidate=None
                 self.red_start=stamp
+            # Promote the candidate only after the red has been observed long
+            # enough to be believable, reusing the same threshold that guards
+            # the red -> green anchor.
+            if (self.red_candidate is not None and
+                    stamp-self.red_candidate+1e-6>=self.min_red_observation):
+                self._lock_phase_clock_red(s.get('light_id'),self.red_candidate)
         elif state == 'green':
             red_duration=(stamp-self.red_start if
                           self.previous is not None and
@@ -405,6 +444,21 @@ class CrossingPolicy(object):
         offset=self._offset_for(light_id)
         if offset is None:return
         self.clock_origin=float(onset)+offset-self.clock_red
+
+    def _lock_phase_clock_red(self,light_id,onset):
+        """Lock the phase clock from a witnessed red onset.
+
+        Red occupies phase [0, red_s) of the configured cycle, so the world-time
+        start of a cycle is simply the red onset shifted by the lamp offset.
+        Inferring the green onset from that origin is no less accurate than the
+        red -> green path, and the caller has already required the red to be
+        observed for min_red_observation seconds, so a false red cannot anchor
+        the clock.
+        """
+        if not self.clock_valid or self.clock_origin is not None:return
+        offset=self._offset_for(light_id)
+        if offset is None:return
+        self.clock_origin=float(onset)+offset
 
     def _infer_green_start(self,light_id,stamp):
         """Infer the latest green onset only after a visual clock lock."""

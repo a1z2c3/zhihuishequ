@@ -42,9 +42,17 @@ def check(package):
     for gate in [e for e in layout['route'] if e.get('gate')]:
         lamp=world.find(".//world/model[@name='%s']"%gate['gate'])
         p=[float(v) for v in lamp.findtext('pose').split()]
-        obj={'x':p[0],'y':p[1],'z':p[2]+.34,'yaw':p[5]}
+        # Read the housing geometry from the world instead of hardcoding it.
+        # The official ruler photo puts the 0.64 x 0.14 m housing between
+        # z=0.34 m and z=0.48 m, so its centre is at z=0.41 m.  Hardcoding a
+        # lower centre would leave the top of the housing unchecked against
+        # FOV clipping, which is exactly what this test claims to rule out.
+        housing=lamp.find(".//visual[@name='box']")
+        hp=[float(v) for v in housing.findtext('pose').split()]
+        hs=[float(v) for v in housing.findtext('geometry/box/size').split()]
+        obj={'x':p[0],'y':p[1],'z':p[2]+hp[2],'yaw':p[5]}
         # Require the entire housing, not just its centre, inside both FOVs.
-        visible=visible_card(obj,.64,.14,tuple(gate['xy'])+(math.radians(gate['yaw']),),camera)
+        visible=visible_card(obj,hs[0],hs[2],tuple(gate['xy'])+(math.radians(gate['yaw']),),camera)
         lights.append({'id':gate['gate'],'at':gate['name'],'housing':visible,'pass':visible is not None})
         if visible is None:failures.append(gate['gate']+' housing clipped at waiting pose')
     obstacles=physical_obstacles(str(package/'worlds/official_semifinal.world'))

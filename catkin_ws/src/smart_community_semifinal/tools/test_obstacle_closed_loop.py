@@ -94,6 +94,21 @@ class ClosedLoopAvoidance(unittest.TestCase):
     def test_long_left_offset_obstacle_closes_without_retrigger(self):
         self.run_box((.30,.66,.12,.24),'right')
 
+    def test_side_step_keeps_progress_when_obstacle_edge_is_near(self):
+        """A narrow side-step must not become a zero-progress deadlock."""
+        patrol=Patrol([{'name':'goal','xy':[1.5,0.],'yaw':0}])
+        pose=[0.,0.,0.]
+        guard={'forward_obstacle':True,'obstacle_ahead':True,
+               'left_free':True,'right_free':False,
+               'left_obstacle_ahead':False,'right_obstacle_ahead':True,
+               'recenter_clear':True,'obstacle_rear_x':.25}
+        for step in range(3):
+            patrol.step(pose,step*.1,guard=guard)
+        command=patrol.step(pose,.4,guard=guard)
+        self.assertEqual(patrol.phase,'avoid')
+        self.assertGreater(command[0],0.)
+        self.assertGreater(command[1],0.)
+
     def test_centered_unpassable_obstacle_waits_without_stall(self):
         patrol=Patrol([{'name':'goal','xy':[1.5,0.],'yaw':0}])
         box=(.30,.60,-.15,.15)

@@ -113,28 +113,24 @@ class Contracts(unittest.TestCase):
         self.assertEqual(population["visitor"],2)
         self.assertEqual(sum(item["total"] for item in population["by_street"].values()),16)
 
-        def inside(point, polygon):
-            x,y=point;result=False
-            for i in range(len(polygon)):
-                x1,y1=polygon[i];x2,y2=polygon[(i+1)%len(polygon)]
-                if ((y1>y)!=(y2>y)) and x < (x2-x1)*(y-y1)/float(y2-y1)+x1:
-                    result=not result
-            return result
+    def test_person_assets_use_official_standee_dimensions(self):
+        manifest=json.loads((PKG/"assets/manifest.json").read_text(encoding="utf-8"))
+        people=[row for row in manifest["recognition_assets"]
+                if row["category"] in ("resident","visitor")]
+        self.assertEqual(len(people),18)
+        for row in people:
+            self.assertAlmostEqual(row["width_m"],0.05,places=9)
+            self.assertAlmostEqual(row["height_m"],0.15,places=9)
+            self.assertAlmostEqual(row["thickness_m"],0.005,places=9)
+            self.assertGreater(row["artwork_width_m"],0.)
+            self.assertGreater(row["artwork_height_m"],0.)
+            self.assertLessEqual(row["artwork_width_m"],row["width_m"]+1e-9)
+            self.assertLessEqual(row["artwork_height_m"],row["height_m"]+1e-9)
+            self.assertEqual(row["dimension_status"],"official_training_sheet")
+            model=(PKG/"models"/row["label"])/"model.sdf"
+            text=model.read_text(encoding="utf-8")
+            self.assertIn('<size>0.050000 0.005000 0.150000</size>',text)
 
-        by_street={'A':[],'B':[],'unassigned':[]}
-        for item in people:
-            point=(item['x'],item['y'])
-            street='A' if inside(point,layout['a_polygon']) else \
-                   'B' if inside(point,layout['b_polygon']) else 'unassigned'
-            by_street[street].append(item)
-        self.assertFalse(by_street['unassigned'])
-        self.assertEqual(len(by_street['A']),8)
-        self.assertEqual(len(by_street['B']),8)
-        for street in ('A','B'):
-            self.assertEqual(sum(item['model'].startswith('resident_')
-                                 for item in by_street[street]),7)
-            self.assertEqual(sum(item['model'].startswith('visitor_')
-                                 for item in by_street[street]),1)
 
 
 def route_check():

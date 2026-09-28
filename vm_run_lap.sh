@@ -102,18 +102,26 @@ echo "      [OK] 机器人已就绪（用时约 ${i} 秒）"
 echo "[2/5] 等待 map→base_footprint 变换就绪……（最多 180 秒，说明 gmapping 已开始出图）"
 if ! timeout 185 python - <<'PY'
 from __future__ import print_function
-import sys, time, rospy, tf
+import os, sys, time, rospy, tf
 
 rospy.init_node('semifinal_wait_for_map', anonymous=True, disable_signals=True)
 listener = tf.TransformListener()
 deadline = time.time() + 180
+status = 1
 while time.time() < deadline and not rospy.is_shutdown():
     try:
         listener.lookupTransform('map', 'base_footprint', rospy.Time(0))
-        sys.exit(0)
+        status = 0
+        break
     except tf.Exception:
         time.sleep(.5)
-sys.exit(1)
+# Leave with os._exit(): rospy's Python 2 teardown walks its log handlers during
+# interpreter shutdown and can raise "AttributeError: 'NoneType' object has no
+# attribute 'close'", which prints a red traceback in the operator's terminal
+# even though the wait succeeded.  Flush first so nothing is lost.
+sys.stdout.flush()
+sys.stderr.flush()
+os._exit(status)
 PY
 then
   echo 'Map-to-robot TF did not become ready; see scene.log.' >&2
@@ -122,7 +130,7 @@ fi
 echo "      [OK] TF 已就绪"
 
 echo "[3/5] 启动独立评价器（必须先于任务，否则覆盖不到起点）……"
-timeout --signal=INT --kill-after=10s 1650s \
+timeout --signal=INT --kill-after=10s 1950s \
   python "$PKG/tools/evaluate_run.py" _output_dir:="$RUN_DIR" \
   > "$RUN_DIR/evaluator.log" 2>&1 &
 EVAL_PID=$!

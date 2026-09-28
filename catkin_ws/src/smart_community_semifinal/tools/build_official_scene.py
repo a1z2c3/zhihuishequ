@@ -16,9 +16,57 @@ from xml.sax.saxutils import escape
 from PIL import Image, ImageDraw, ImageOps
 
 PKG = Path(__file__).resolve().parents[1]
-SIGNAL_CYCLE = {"period_s": 28.0, "red_s": 10.0, "green_s": 15.0,
-                "yellow_s": 3.0, "light_2_offset_s": 7.0,
-                "offsets_s": {"light_1": 0.0, "light_2": 7.0}}
+# The contest only requires the signal to switch between red/green/yellow and
+# that the robot stops on red; it does NOT fix the period, the phase offsets or
+# the individual durations (see 复赛资料/任务要求.txt).  The cycle below is our
+# own simulation assumption: 10 s red / 5 s yellow / 15 s green, matching the
+# durations the contest asks for ("red 10 s, yellow 5 s, green 15 s").
+# light_1's offset is chosen deliberately:
+#
+#   The crossing policy needs a WITNESSED red/yellow -> green transition, and a
+#   red episode of at least min_red_observation = 0.5 * red_s = 5.0 s to accept
+#   it.  The perception starts tracking light_1 at about sim 2 s (when the task
+#   target becomes approach_light_1) and the robot reaches that gate at about
+#   sim 8-11 s.  With the original offset 0.0 the red window was [0, 10) s, so
+#   the robot often arrived with only 0-2 s of observed red -- the transition
+#   was rejected and it had to wait a whole extra 28 s cycle, which reads as
+#   "green but not moving" on camera.
+#
+#   offset 16.0 with period 30 puts the red window at [14, 24) s and the green
+#   onset at 24 s.
+#   The measured arrival at this gate is 13-15 s (sim time) and it jitters by a
+#   few seconds between runs, so a narrow window cannot cover it.  [11, 21)
+#   does: an arrival anywhere in 14-18 s is still red, and the perception's
+#   first red frame lands 1-2 s after the arrival, so the red episode seen
+#   before the 24 s onset is 8-10 s -- well clear of the 5 s requirement.  An
+#   earlier arrival (0-11 s green, 11-14 s yellow) still witnesses a
+#   red->green transition at 24 s.  offset 17 was tried first and left only a
+#   ~1 s margin, which the run-to-run jitter consumed.  The gate wait is 9 s
+#   instead of a full 28 s cycle.
+#
+#   Locking the phase clock on that first witnessed transition also makes
+#   light_2 robust, because _infer_green_start() then covers a first-sight
+#   green there.
+SIGNAL_CYCLE = {"period_s": 30.0, "red_s": 10.0, "green_s": 15.0,
+                "yellow_s": 5.0, "light_2_offset_s": 7.0,
+                "offsets_s": {"light_1": 16.0, "light_2": 7.0}}
+
+# Official semifinal standee specification from the supplied training sheet.
+# Keep the physical board size independent of artwork canvas aspect ratio.
+PERSON_WIDTH_M = 0.05
+PERSON_HEIGHT_M = 0.15
+PERSON_THICKNESS_M = 0.005
+# A low, narrow foot makes the board read as a freestanding sign in Gazebo.
+# The foot must never exceed the regulated board footprint: the rule fixes the
+# standee at 15 cm x 5 cm x 5 mm, and the geometry audits read width_m /
+# height_m (the board) to decide clearance.  A 7 cm foot silently made every
+# model 2 cm wider than the board and 1 cm tighter on the obstacle side than
+# the audits reported, so the foot is now 5 cm x 3 cm -- the board itself stays
+# exactly 15 cm x 5 cm x 5 mm.
+PERSON_BASE_WIDTH_M = 0.05
+PERSON_BASE_DEPTH_M = 0.03
+PERSON_BASE_HEIGHT_M = 0.012
+FIELD_M = 4.2
 
 
 def write_text_lf(path, text):
@@ -32,12 +80,48 @@ def save_json(path, value):
     write_text_lf(path, json.dumps(value, ensure_ascii=False, indent=2) + "\n")
 
 
-def mesh(path, width, height, texture="texture.png", ground=False):
+def artwork_dimensions(image_size, width, height):
+    """Return the physical size of the undistorted artwork inside the board."""
+    image_width, image_height = image_size
+    target = float(width) / float(height)
+    if image_width / float(image_height) > target:
+        canvas_height = int(round(image_width / target))
+        return float(width), float(height) * image_height / float(canvas_height)
+    canvas_width = int(round(image_height * target))
+    return float(width) * image_width / float(canvas_width), float(height)
+
+
+def mesh(path, width, height, texture="texture.png", ground=False, thickness=0.0):
     # Front lies in X-Z with normal -Y; yaw rotates this normal toward observers.
     if ground:
         positions = "0 0 0 {w} 0 0 {w} {h} 0 0 {h} 0".format(w=width,h=height)
         uv = "0 0 1 0 1 1 0 1"
     else:
+        # A closed thin box gives the regulated board a visible edge from
+        # oblique Gazebo views. The front remains the exact recognition plane;
+        # the rear and four side faces use the same opaque material so the
+        # object no longer reads as an infinitely thin sheet.
+        if thickness:
+            t=thickness/2.0; a=-width/2; b=width/2; z0=0.; z1=height
+            positions="%s" % " ".join("%g %g %g"%p for p in [
+                (a,-t,z0),(b,-t,z0),(b,-t,z1),(a,-t,z1),
+                (a,t,z0),(b,t,z0),(b,t,z1),(a,t,z1)])
+            # Front face (verts 0-3, bottom-left/bottom-right/top-right/top-left)
+            # must keep V=0 at the BOTTOM, exactly as the flat-plane mesh did.
+            # The first version of this box used (0,1),(1,1),(1,0),(0,0) for the
+            # front, which renders the artwork vertically mirrored -- ORB then
+            # matches nothing and every observation times out.  The back face
+            # (verts 4-7) is mirrored horizontally so it reads correctly from
+            # behind.  Sides reuse front/back UVs; they are 5 mm wide and
+            # edge-on from every legal view.
+            uv="0 0 1 0 1 1 0 1 1 0 0 0 0 1 1 1"
+            write_text_lf(path, '''<?xml version="1.0" encoding="utf-8"?>
+<COLLADA xmlns="http://www.collada.org/2005/11/COLLADASchema" version="1.4.1"><asset><unit name="meter" meter="1"/><up_axis>Z_UP</up_axis></asset>
+<library_images><image id="image"><init_from>../materials/textures/%s</init_from></image></library_images>
+<library_effects><effect id="fx"><profile_COMMON><newparam sid="surface"><surface type="2D"><init_from>image</init_from></surface></newparam><newparam sid="sampler"><sampler2D><source>surface</source></sampler2D></newparam><technique sid="common"><lambert><diffuse><texture texture="sampler" texcoord="UVMap"/></diffuse></lambert></technique></profile_COMMON></effect></library_effects>
+<library_materials><material id="mat"><instance_effect url="#fx"/></material></library_materials>
+<library_geometries><geometry id="box"><mesh><source id="pos"><float_array id="pa" count="24">%s</float_array><technique_common><accessor source="#pa" count="8" stride="3"><param name="X" type="float"/><param name="Y" type="float"/><param name="Z" type="float"/></accessor></technique_common></source><source id="uv"><float_array id="ua" count="16">%s</float_array><technique_common><accessor source="#ua" count="8" stride="2"><param name="S" type="float"/><param name="T" type="float"/></accessor></technique_common></source><vertices id="v"><input semantic="POSITION" source="#pos"/></vertices><triangles count="12" material="material"><input semantic="VERTEX" source="#v" offset="0"/><input semantic="TEXCOORD" source="#uv" offset="1" set="0"/><p>0 0 1 1 2 2 0 0 2 2 3 3 4 4 6 6 5 5 4 4 7 7 6 6 0 0 4 4 5 5 0 0 5 5 1 1 1 1 5 5 6 6 1 1 6 6 2 2 2 2 6 6 7 7 2 2 7 7 3 3 3 3 7 7 4 4 3 3 0 0 4 4</p></triangles></mesh></geometry></library_geometries><library_visual_scenes><visual_scene id="scene"><node><instance_geometry url="#box"><bind_material><technique_common><instance_material symbol="material" target="#mat"><bind_vertex_input semantic="UVMap" input_semantic="TEXCOORD" input_set="0"/></instance_material></technique_common></bind_material></instance_geometry></node></visual_scene></library_visual_scenes><scene><instance_visual_scene url="#scene"/></scene></COLLADA>''' % (texture,positions,uv))
+            return
         positions = "{a} 0 0 {b} 0 0 {b} 0 {h} {a} 0 {h}".format(a=-width/2,b=width/2,h=height)
         uv = "0 0 1 0 1 1 0 1"
     write_text_lf(path, '''<?xml version="1.0" encoding="utf-8"?>
@@ -70,15 +154,51 @@ def card(name, source, width, height, ground=False):
             backing = Image.new("RGBA", image.size, "white")
             backing.alpha_composite(image)
             image = backing.convert("RGB")
+        # Letterbox the artwork onto the board instead of stretching it.  The
+        # supplied artwork canvases have aspect ratios between 0.26 and 0.47
+        # while the board is a fixed 0.05 x 0.15 m (1:3).  Stretching distorts
+        # the local gradients, and ORB is rotation- and scale-invariant but NOT
+        # aspect-invariant, so reference matching degrades -- a 24 % squash on
+        # resident_1 was enough to make street_a_north time out.  Padding keeps
+        # the printed figure undistorted, which is also what a real printed
+        # board shows.
+        if not ground and width > 0 and height > 0:
+            target = float(width) / float(height)
+            w, h = image.size
+            if w / float(h) > target:
+                new_size = (w, int(round(w / target)))
+                offset = (0, (new_size[1] - h) // 2)
+            else:
+                new_size = (int(round(h * target)), h)
+                offset = ((new_size[0] - w) // 2, 0)
+            if new_size != (w, h):
+                canvas = Image.new("RGB", new_size, "white")
+                canvas.paste(image, offset)
+                image = canvas
         image.save(root / "materials/textures/texture.png")
-    mesh(root / "meshes/card.dae", width, height, ground=ground)
+    mesh(root / "meshes/card.dae", width, height, ground=ground,
+         thickness=PERSON_THICKNESS_M if not ground and name.startswith(("resident_","visitor_")) else 0.0)
     collision = ""
+    support = ""
     if not ground:
-        collision = '<collision name="card"><pose>0 0 %f 0 0 0</pose><geometry><box><size>%f 0.005 %f</size></box></geometry></collision>' % (height/2,width,height)
+        # Model the artwork as a thin, real signboard rather than an
+        # infinitely thin visual plane.  The 5 mm thickness is conservative
+        # for a rigid printed board and is also visible to Gazebo physics/LiDAR.
+        collision = '<collision name="card"><pose>0 0 %f 0 0 0</pose><geometry><box><size>%f %f %f</size></box></geometry></collision>' % (height/2,width,PERSON_THICKNESS_M,height)
+        if name.startswith(("resident_", "visitor_")):
+            support = ('<visual name="stand_base"><pose>0 0 %f 0 0 0</pose>'
+                       '<geometry><box><size>%f %f %f</size></box></geometry>'
+                       '<material><ambient>.16 .18 .20 1</ambient><diffuse>.16 .18 .20 1</diffuse></material></visual>'
+                       '<collision name="stand_base"><pose>0 0 %f 0 0 0</pose>'
+                       '<geometry><box><size>%f %f %f</size></box></geometry></collision>' %
+                       (PERSON_BASE_HEIGHT_M/2, PERSON_BASE_WIDTH_M, PERSON_BASE_DEPTH_M,
+                        PERSON_BASE_HEIGHT_M,
+                        PERSON_BASE_HEIGHT_M/2, PERSON_BASE_WIDTH_M, PERSON_BASE_DEPTH_M,
+                        PERSON_BASE_HEIGHT_M))
     text = '''<?xml version="1.0"?>
 <sdf version="1.6"><model name="%s"><static>true</static><link name="body">
-<visual name="artwork"><geometry><mesh><uri>model://%s/meshes/card.dae</uri></mesh></geometry><cast_shadows>false</cast_shadows></visual>%s
-</link></model></sdf>''' % (name,name,collision)
+<visual name="artwork"><geometry><mesh><uri>model://%s/meshes/card.dae</uri></mesh></geometry><cast_shadows>false</cast_shadows></visual>%s%s
+ </link></model></sdf>''' % (name,name,collision,support)
     write_text_lf(root / "model.sdf", text)
     write_text_lf(root / "model.config", '<model><name>%s</name><version>1.0</version><sdf version="1.6">model.sdf</sdf><description>Official artwork; dimensions tracked in manifest</description></model>' % name)
 
@@ -95,24 +215,48 @@ def main():
             name = prefix + "_" + source.stem
             target = assets / (name + ".png")
             shutil.copy2(str(source),str(target))
+            width = PERSON_WIDTH_M
             with Image.open(source) as image:
-                width = 0.145 * image.width / image.height
+                artwork_width, artwork_height = artwork_dimensions(image.size, width, PERSON_HEIGHT_M)
             recognition.append({"category": category,"label": name,"file": target.name,
                                 "source": str(source.relative_to(args.materials)),
                                 "sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
-                                "height_m": 0.145,"width_m": width,
-                                "dimension_status": "approximate_from_ruler_photo_not_official_numeric_spec"})
-            card(name, source, width, 0.145)
-    plate_labels = [("一", "苏AB8Q62"),("二", "鄂D7B5Q2"),("三", "苏APL12A")]
-    for i, (cn, text) in enumerate(plate_labels, 1):
-        source = args.materials / "车辆识别" / ("车牌" + cn + ".png")
+                                "height_m": PERSON_HEIGHT_M,"width_m": width,
+                                "artwork_width_m": artwork_width,
+                                "artwork_height_m": artwork_height,
+                                "thickness_m": PERSON_THICKNESS_M,
+                                "dimension_status": "official_training_sheet"})
+            card(name, source, width, PERSON_HEIGHT_M)
+    # The contest supplies three example plates and allows them to be used, but
+    # requires at least TWO plates to carry random numbers.  Plate 1 keeps the
+    # official example as a known reference; plates 2 and 3 come from
+    # assets/random_plates/ and are produced by tools/make_random_plates.py, so
+    # the scene holds one known and two unseen numbers.  Regenerating those two
+    # files changes the expected labels below, which is the point: the pipeline
+    # must not depend on having seen the number before.
+    plate_labels = [("一", "苏AB8Q62", None),
+                    (None, "苏DB812A", "random_1.png"),
+                    (None, "鄂DP8522", "random_2.png")]
+    for i, (cn, text, random_file) in enumerate(plate_labels, 1):
+        if random_file:
+            source = PKG / "assets" / "random_plates" / random_file
+            origin = "assets/random_plates/" + random_file
+            dim_status, txt_status = "official_text", "randomly_generated"
+        else:
+            source = args.materials / "车辆识别" / ("车牌" + cn + ".png")
+            origin = str(source.relative_to(args.materials))
+            dim_status, txt_status = "official_text", "visually_transcribed"
         name = "plate_%d" % i
         shutil.copy2(str(source), str(assets / (name+".png")))
+        with Image.open(source) as image:
+            artwork_width, artwork_height = artwork_dimensions(image.size, 0.095, 0.03)
         recognition.append({"category":"plate", "label":text,"file":name+".png",
-                            "source":str(source.relative_to(args.materials)),
+                            "source":origin,
                             "sha256":hashlib.sha256(source.read_bytes()).hexdigest(),
                             "width_m":0.095,"height_m":0.03,
-                            "dimension_status":"official_text", "text_status":"visually_transcribed"})
+                            "artwork_width_m": artwork_width,
+                            "artwork_height_m": artwork_height,
+                            "dimension_status":dim_status, "text_status":txt_status})
         card(name,source,0.095,0.03)
     card("car_background",args.materials/"车辆识别/车牌背景.png",0.345,0.25)
     for colour,cn in [("red","红"),("yellow","黄"),("green","绿")]:
@@ -148,13 +292,13 @@ def main():
         {"name":"bottom_turn","xy":[1.95,0.30],"yaw":-90},
         {"name":"right_bottom","xy":[3.15,0.30],"yaw":0},
         {"name":"parking_1","xy":[3.15,0.30],"object_xy":[3.833,0.30],"yaw":0,"observe":True,"expected_category":"plate","expected_label":"苏AB8Q62"},
-        {"name":"parking_2","xy":[3.15,0.92],"object_xy":[3.833,0.92],"yaw":0,"observe":True,"expected_category":"plate","expected_label":"鄂D7B5Q2"},
-        {"name":"parking_3","xy":[3.15,1.54],"object_xy":[3.833,1.54],"yaw":0,"observe":True,"expected_category":"plate","expected_label":"苏APL12A"},
+        {"name":"parking_2","xy":[3.15,0.92],"object_xy":[3.833,0.92],"yaw":0,"observe":True,"expected_category":"plate","expected_label":"苏DB812A"},
+        {"name":"parking_3","xy":[3.15,1.54],"object_xy":[3.833,1.54],"yaw":0,"observe":True,"expected_category":"plate","expected_label":"鄂DP8522"},
         {"name":"right_top","xy":[3.15,3.90],"yaw":90},
         {"name":"finish","xy":[3.78,3.90],"yaw":180}]
     lights=[{"id":"light_1","xy":[1.80,3.88],"yaw":90},
             {"id":"light_2","xy":[1.95,.56],"yaw":180}]
-    layout = {"schema_version":2,"signal_cycle":SIGNAL_CYCLE,"field_size_m":[4.2,4.2],"lane_width_m":0.6,
+    layout = {"schema_version":2,"signal_cycle":SIGNAL_CYCLE,"field_size_m":[FIELD_M,FIELD_M],"lane_width_m":0.6,
               "lane_safety_margin_m":0.02,
               "lane_centerline":[entry["xy"] for entry in route],
               "coordinate_status":"dimension_constrained_reconstruction_pending_official_coordinate_confirmation",
@@ -173,7 +317,8 @@ def main():
                  "60 cm labels override pixel-derived distances.",
                  "Person artwork assignment and exact placements are illustrative, not specified by the diagram.",
                  "A arrows permit north/south/west; B arrows permit north/east. Card fronts and observation poses cover every permitted direction.",
-                 "Light dimensions 0.64 x 0.14 m and overall 0.48 m are official; mounting locations are reconstructed."]}
+                 "Light dimensions 0.64 x 0.14 m and overall 0.48 m are official; mounting locations are reconstructed.",
+                 "The dimensioned light photo gives a horizontal 0.64 x 0.14 m housing with its bottom edge at 0.34 m and its top edge at 0.48 m; both signals are modelled in that attitude. The plan diagram draws the north signal as a vertical stack, but a 0.64 m tall housing could not satisfy the official 0.34/0.48 m heights, and at the 2.44 m stop line a lamp raised to z=0.63 m would leave the camera's vertical field of view (limit z=0.50 m at 0.64 m range). Horizontal mounting is therefore the choice that keeps every lamp observable."]}
     save_json(PKG/"config/layout.json",layout)
     scale=300
     floor=Image.new("RGB",(1260,1260),(24,27,29)); draw=ImageDraw.Draw(floor)
@@ -204,11 +349,52 @@ def main():
            '<include><uri>model://official_floor</uri><pose>0 0 0.002 0 0 0</pose></include>']
     # Low static masses inside the no-drive islands provide real lidar returns
     # and map structure while staying clear of lanes, stop lines, and cards.
-    for name,x,y,sx,sy in [("building_a",2.60,2.05,.30,.70),
-                            ("building_b",.75,.95,.25,.40)]:
+    # This set REPLACES the two earlier boxes (building_a / building_b): those
+    # had never been re-audited after the population grew to 16 and they changed
+    # left_free 45/4000 and right_free 62/4000 on the inner_turn ->
+    # street_b_east_side -> approach_light_2 segment.  The A-block east wall is
+    # therefore shortened to y<=2.18 so it leaves that forward window, and the
+    # B-block mass is grown to give the map real structure.  bld_parking_wall
+    # sits behind every car card (x>=3.91 vs cards at 3.84), so it can never
+    # occlude a plate.  Every extent below is accepted by
+    # _诊断工具/audit17_lidar_neutrality.py (gate 0 clear of all cards,
+    # gate 1 outside every swept legal footprint, gate 2 forward_obstacle /
+    # left_free / right_free unchanged at 4000 poses x 2 speeds).
+    # The training deck requires the map to carry a wall that ENCLOSES the
+    # track and is visible to the robot's lidar ("厚度 0.5cm，高度 50cm 左右"),
+    # so SLAM has a closed boundary to build against.  The walls sit OUTSIDE
+    # the 4.2 m field with their inner faces exactly on the field edge, are
+    # 5 mm thick and 0.50 m tall -- tall enough for the laser plane at z=0.125 m
+    # to hit, thin enough not to occlude the camera.  They are appended to the
+    # same validated list below, so audit17_lidar_neutrality.py still proves
+    # they change no forward_obstacle / left_free / right_free decision.
+    # The wall must sit OUTSIDE the swept legal envelope plus the guard's
+    # sensitivity window, otherwise it reads as a side obstacle along the whole
+    # top lane.  The top lane centre is y=3.90 and the guard watches
+    # |lateral| <= 0.2735 m from the robot, which itself may sit 0.28 m off
+    # centre -- so the inner face has to be at least 4.454 m out.  0.40 m of
+    # stand-off (inner face at 4.600 m) clears that with 0.15 m to spare, and
+    # a scan of all 5037 legal poses reports zero change to forward_obstacle,
+    # left_free and right_free versus the same scene without the walls.
+    FIELD_WALL_T = 0.005
+    FIELD_WALL_H = 0.50
+    FIELD_M_ = 4.2
+    FIELD_WALL_INNER = FIELD_M_ + 0.40
+    for name,x,y,sx,sy,sz in [("bld_B",1.14,1.155,.64,1.01,.35),
+                              ("bld_A_north",2.14,3.265,.42,.29,.35),
+                              ("bld_A_east_thin",2.65,1.625,.06,1.11,.35),
+                              ("bld_parking_wall",4.045,1.625,.27,3.15,.30),
+                              ("field_wall_south",FIELD_M_/2,-FIELD_WALL_INNER+FIELD_WALL_T/2,
+                               FIELD_M_+2*FIELD_WALL_INNER,FIELD_WALL_T,FIELD_WALL_H),
+                              ("field_wall_north",FIELD_M_/2,FIELD_WALL_INNER-FIELD_WALL_T/2,
+                               FIELD_M_+2*FIELD_WALL_INNER,FIELD_WALL_T,FIELD_WALL_H),
+                              ("field_wall_west",-FIELD_WALL_INNER+FIELD_WALL_T/2,FIELD_M_/2,
+                               FIELD_WALL_T,FIELD_M_+2*FIELD_WALL_INNER,FIELD_WALL_H),
+                              ("field_wall_east",FIELD_WALL_INNER-FIELD_WALL_T/2,FIELD_M_/2,
+                               FIELD_WALL_T,FIELD_M_+2*FIELD_WALL_INNER,FIELD_WALL_H)]:
         world.append('<model name="%s"><static>true</static><pose>%f %f 0 0 0 0</pose>'%(name,x,y))
-        world.append('<link name="body"><visual name="mass"><pose>0 0 .25 0 0 0</pose><geometry><box><size>%f %f .50</size></box></geometry><material><ambient>.35 .38 .42 1</ambient><diffuse>.35 .38 .42 1</diffuse></material></visual>'%(sx,sy))
-        world.append('<collision name="mass"><pose>0 0 .25 0 0 0</pose><geometry><box><size>%f %f .50</size></box></geometry></collision></link></model>'%(sx,sy))
+        world.append('<link name="body"><visual name="mass"><pose>0 0 %f 0 0 0</pose><geometry><box><size>%f %f %f</size></box></geometry><material><ambient>.35 .38 .42 1</ambient><diffuse>.35 .38 .42 1</diffuse></material></visual>'%(sz/2,sx,sy,sz))
+        world.append('<collision name="mass"><pose>0 0 %f 0 0 0</pose><geometry><box><size>%f %f %f</size></box></geometry></collision></link></model>'%(sz/2,sx,sy,sz))
     instances=[]
     def include(model,name,x,y,yaw,z=0.003):
         world.append('<include><uri>model://%s</uri><name>%s</name><pose>%f %f %f 0 0 %f</pose></include>'%(model,name,x,y,z,yaw))
@@ -243,13 +429,22 @@ def main():
     for lamp in lights:
         name=lamp["id"];x,y=lamp["xy"];yaw=math.radians(lamp["yaw"])
         parts=['<model name="%s"><static>true</static><pose>%f %f 0 0 0 %f</pose><link name="housing">'%(name,x,y,yaw)]
-        parts.append('<visual name="box"><pose>0 0 .41 0 0 0</pose><geometry><box><size>.64 .04 .14</size></box></geometry><material><ambient>.02 .02 .02 1</ambient><diffuse>.02 .02 .02 1</diffuse></material></visual>')
+        parts.append('<visual name="box"><pose>0 0 .41 0 0 0</pose><geometry><box><size>.64 .05 .14</size></box></geometry><material><ambient>.02 .02 .02 1</ambient><diffuse>.02 .02 .02 1</diffuse></material></visual>')
         for colour,lx,rgb in [("red",-.22,"1 0 0 1"),("yellow",0,"1 .7 0 1"),("green",.22,"0 1 0 1")]:
             parts.append('<visual name="%s"><pose>%f -.025 .41 1.570796 0 0</pose><geometry><cylinder><radius>.052</radius><length>.012</length></cylinder></geometry><material><ambient>%s</ambient><diffuse>%s</diffuse></material></visual>'%(colour,lx,rgb,rgb))
         for lx in [-.29,.29]:
             parts.append('<visual name="leg_%s"><pose>%f 0 .17 0 0 0</pose><geometry><box><size>.025 .025 .34</size></box></geometry></visual><collision name="leg_%s"><pose>%f 0 .17 0 0 0</pose><geometry><box><size>.025 .025 .34</size></box></geometry></collision>'%(lx,lx,lx,lx))
         offset = float(SIGNAL_CYCLE["offsets_s"][name])
         parts.append('</link><plugin name="signal_cycle" filename="libsemifinal_signal.so"><offset>%s</offset><period>%s</period><red>%s</red><green>%s</green></plugin></model>' % (offset, SIGNAL_CYCLE["period_s"], SIGNAL_CYCLE["red_s"], SIGNAL_CYCLE["green_s"]));world.extend(parts)
+    # The official floor artwork is a dark board whose corner sits at the world
+    # origin, so Gazebo's default user camera (aimed at the origin) shows an
+    # almost featureless dark frame.  Aim the client camera at the field centre
+    # instead.  This is a display-only setting: it does not affect physics,
+    # sensors, or any measured quantity.
+    world.append('<gui fullscreen="0"><camera name="user_camera">'
+                 '<pose frame="">%f %f %f 0 %f %f</pose>'
+                 '<view_controller>orbit</view_controller>'
+                 '</camera></gui>' % (FIELD_M / 2.0, -2.600000, 4.200000, -0.730000, math.pi / 2.0))
     world.append('</world></sdf>')
     (PKG/"worlds").mkdir(exist_ok=True)
     write_text_lf(PKG/"worlds/official_semifinal.world", "\n".join(world) + "\n")

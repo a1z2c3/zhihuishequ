@@ -2,12 +2,30 @@
 <physics type="ode"><max_step_size>0.001</max_step_size><real_time_update_rate>200</real_time_update_rate></physics>
 <include><uri>model://sun</uri></include><include><uri>model://ground_plane</uri></include>
 <include><uri>model://official_floor</uri><pose>0 0 0.002 0 0 0</pose></include>
-<model name="building_a"><static>true</static><pose>2.600000 2.050000 0 0 0 0</pose>
-<link name="body"><visual name="mass"><pose>0 0 .25 0 0 0</pose><geometry><box><size>0.300000 0.700000 .50</size></box></geometry><material><ambient>.35 .38 .42 1</ambient><diffuse>.35 .38 .42 1</diffuse></material></visual>
-<collision name="mass"><pose>0 0 .25 0 0 0</pose><geometry><box><size>0.300000 0.700000 .50</size></box></geometry></collision></link></model>
-<model name="building_b"><static>true</static><pose>0.750000 0.950000 0 0 0 0</pose>
-<link name="body"><visual name="mass"><pose>0 0 .25 0 0 0</pose><geometry><box><size>0.250000 0.400000 .50</size></box></geometry><material><ambient>.35 .38 .42 1</ambient><diffuse>.35 .38 .42 1</diffuse></material></visual>
-<collision name="mass"><pose>0 0 .25 0 0 0</pose><geometry><box><size>0.250000 0.400000 .50</size></box></geometry></collision></link></model>
+<model name="bld_B"><static>true</static><pose>1.140000 1.155000 0 0 0 0</pose>
+<link name="body"><visual name="mass"><pose>0 0 0.175000 0 0 0</pose><geometry><box><size>0.640000 1.010000 0.350000</size></box></geometry><material><ambient>.35 .38 .42 1</ambient><diffuse>.35 .38 .42 1</diffuse></material></visual>
+<collision name="mass"><pose>0 0 0.175000 0 0 0</pose><geometry><box><size>0.640000 1.010000 0.350000</size></box></geometry></collision></link></model>
+<model name="bld_A_north"><static>true</static><pose>2.140000 3.265000 0 0 0 0</pose>
+<link name="body"><visual name="mass"><pose>0 0 0.175000 0 0 0</pose><geometry><box><size>0.420000 0.290000 0.350000</size></box></geometry><material><ambient>.35 .38 .42 1</ambient><diffuse>.35 .38 .42 1</diffuse></material></visual>
+<collision name="mass"><pose>0 0 0.175000 0 0 0</pose><geometry><box><size>0.420000 0.290000 0.350000</size></box></geometry></collision></link></model>
+<model name="bld_A_east_thin"><static>true</static><pose>2.650000 1.625000 0 0 0 0</pose>
+<link name="body"><visual name="mass"><pose>0 0 0.175000 0 0 0</pose><geometry><box><size>0.060000 1.110000 0.350000</size></box></geometry><material><ambient>.35 .38 .42 1</ambient><diffuse>.35 .38 .42 1</diffuse></material></visual>
+<collision name="mass"><pose>0 0 0.175000 0 0 0</pose><geometry><box><size>0.060000 1.110000 0.350000</size></box></geometry></collision></link></model>
+<model name="bld_parking_wall"><static>true</static><pose>4.045000 1.625000 0 0 0 0</pose>
+<link name="body"><visual name="mass"><pose>0 0 0.150000 0 0 0</pose><geometry><box><size>0.270000 3.150000 0.300000</size></box></geometry><material><ambient>.35 .38 .42 1</ambient><diffuse>.35 .38 .42 1</diffuse></material></visual>
+<collision name="mass"><pose>0 0 0.150000 0 0 0</pose><geometry><box><size>0.270000 3.150000 0.300000</size></box></geometry></collision></link></model>
+<model name="field_wall_south"><static>true</static><pose>2.100000 -4.597500 0 0 0 0</pose>
+<link name="body"><visual name="mass"><pose>0 0 0.250000 0 0 0</pose><geometry><box><size>13.400000 0.005000 0.500000</size></box></geometry><material><ambient>.35 .38 .42 1</ambient><diffuse>.35 .38 .42 1</diffuse></material></visual>
+<collision name="mass"><pose>0 0 0.250000 0 0 0</pose><geometry><box><size>13.400000 0.005000 0.500000</size></box></geometry></collision></link></model>
+<model name="field_wall_north"><static>true</static><pose>2.100000 4.597500 0 0 0 0</pose>
+<link name="body"><visual name="mass"><pose>0 0 0.250000 0 0 0</pose><geometry><box><size>13.400000 0.005000 0.500000</size></box></geometry><material><ambient>.35 .38 .42 1</ambient><diffuse>.35 .38 .42 1</diffuse></material></visual>
+<collision name="mass"><pose>0 0 0.250000 0 0 0</pose><geometry><box><size>13.400000 0.005000 0.500000</size></box></geometry></collision></link></model>
+<model name="field_wall_west"><static>true</static><pose>-4.597500 2.100000 0 0 0 0</pose>
+<link name="body"><visual name="mass"><pose>0 0 0.250000 0 0 0</pose><geometry><box><size>0.005000 13.400000 0.500000</size></box></geometry><material><ambient>.35 .38 .42 1</ambient><diffuse>.35 .38 .42 1</diffuse></material></visual>
+<collision name="mass"><pose>0 0 0.250000 0 0 0</pose><geometry><box><size>0.005000 13.400000 0.500000</size></box></geometry></collision></link></model>
+<model name="field_wall_east"><static>true</static><pose>4.597500 2.100000 0 0 0 0</pose>
+<link name="body"><visual name="mass"><pose>0 0 0.250000 0 0 0</pose><geometry><box><size>0.005000 13.400000 0.500000</size></box></geometry><material><ambient>.35 .38 .42 1</ambient><diffuse>.35 .38 .42 1</diffuse></material></visual>
+<collision name="mass"><pose>0 0 0.250000 0 0 0</pose><geometry><box><size>0.005000 13.400000 0.500000</size></box></geometry></collision></link></model>
 <include><uri>model://resident_1</uri><name>person_00</name><pose>0.700000 3.180000 0.003000 0 0 3.141593</pose></include>
 <include><uri>model://resident_7</uri><name>person_01</name><pose>0.860000 3.180000 0.003000 0 0 3.141593</pose></include>
 <include><uri>model://resident_3</uri><name>person_02</name><pose>1.020000 3.180000 0.003000 0 0 -1.570796</pose></include>
@@ -31,19 +49,20 @@
 <include><uri>model://car_background</uri><name>car_3</name><pose>3.840000 1.540000 0.003000 0 0 -1.570796</pose></include>
 <include><uri>model://plate_3</uri><name>plate_3</name><pose>3.833000 1.540000 0.073000 0 0 -1.570796</pose></include>
 <model name="light_1"><static>true</static><pose>1.800000 3.880000 0 0 0 1.570796</pose><link name="housing">
-<visual name="box"><pose>0 0 .41 0 0 0</pose><geometry><box><size>.64 .04 .14</size></box></geometry><material><ambient>.02 .02 .02 1</ambient><diffuse>.02 .02 .02 1</diffuse></material></visual>
+<visual name="box"><pose>0 0 .41 0 0 0</pose><geometry><box><size>.64 .05 .14</size></box></geometry><material><ambient>.02 .02 .02 1</ambient><diffuse>.02 .02 .02 1</diffuse></material></visual>
 <visual name="red"><pose>-0.220000 -.025 .41 1.570796 0 0</pose><geometry><cylinder><radius>.052</radius><length>.012</length></cylinder></geometry><material><ambient>1 0 0 1</ambient><diffuse>1 0 0 1</diffuse></material></visual>
 <visual name="yellow"><pose>0.000000 -.025 .41 1.570796 0 0</pose><geometry><cylinder><radius>.052</radius><length>.012</length></cylinder></geometry><material><ambient>1 .7 0 1</ambient><diffuse>1 .7 0 1</diffuse></material></visual>
 <visual name="green"><pose>0.220000 -.025 .41 1.570796 0 0</pose><geometry><cylinder><radius>.052</radius><length>.012</length></cylinder></geometry><material><ambient>0 1 0 1</ambient><diffuse>0 1 0 1</diffuse></material></visual>
 <visual name="leg_-0.29"><pose>-0.290000 0 .17 0 0 0</pose><geometry><box><size>.025 .025 .34</size></box></geometry></visual><collision name="leg_-0.29"><pose>-0.290000 0 .17 0 0 0</pose><geometry><box><size>.025 .025 .34</size></box></geometry></collision>
 <visual name="leg_0.29"><pose>0.290000 0 .17 0 0 0</pose><geometry><box><size>.025 .025 .34</size></box></geometry></visual><collision name="leg_0.29"><pose>0.290000 0 .17 0 0 0</pose><geometry><box><size>.025 .025 .34</size></box></geometry></collision>
-</link><plugin name="signal_cycle" filename="libsemifinal_signal.so"><offset>0.0</offset><period>28.0</period><red>10.0</red><green>15.0</green></plugin></model>
+</link><plugin name="signal_cycle" filename="libsemifinal_signal.so"><offset>16.0</offset><period>30.0</period><red>10.0</red><green>15.0</green></plugin></model>
 <model name="light_2"><static>true</static><pose>1.950000 0.560000 0 0 0 3.141593</pose><link name="housing">
-<visual name="box"><pose>0 0 .41 0 0 0</pose><geometry><box><size>.64 .04 .14</size></box></geometry><material><ambient>.02 .02 .02 1</ambient><diffuse>.02 .02 .02 1</diffuse></material></visual>
+<visual name="box"><pose>0 0 .41 0 0 0</pose><geometry><box><size>.64 .05 .14</size></box></geometry><material><ambient>.02 .02 .02 1</ambient><diffuse>.02 .02 .02 1</diffuse></material></visual>
 <visual name="red"><pose>-0.220000 -.025 .41 1.570796 0 0</pose><geometry><cylinder><radius>.052</radius><length>.012</length></cylinder></geometry><material><ambient>1 0 0 1</ambient><diffuse>1 0 0 1</diffuse></material></visual>
 <visual name="yellow"><pose>0.000000 -.025 .41 1.570796 0 0</pose><geometry><cylinder><radius>.052</radius><length>.012</length></cylinder></geometry><material><ambient>1 .7 0 1</ambient><diffuse>1 .7 0 1</diffuse></material></visual>
 <visual name="green"><pose>0.220000 -.025 .41 1.570796 0 0</pose><geometry><cylinder><radius>.052</radius><length>.012</length></cylinder></geometry><material><ambient>0 1 0 1</ambient><diffuse>0 1 0 1</diffuse></material></visual>
 <visual name="leg_-0.29"><pose>-0.290000 0 .17 0 0 0</pose><geometry><box><size>.025 .025 .34</size></box></geometry></visual><collision name="leg_-0.29"><pose>-0.290000 0 .17 0 0 0</pose><geometry><box><size>.025 .025 .34</size></box></geometry></collision>
 <visual name="leg_0.29"><pose>0.290000 0 .17 0 0 0</pose><geometry><box><size>.025 .025 .34</size></box></geometry></visual><collision name="leg_0.29"><pose>0.290000 0 .17 0 0 0</pose><geometry><box><size>.025 .025 .34</size></box></geometry></collision>
-</link><plugin name="signal_cycle" filename="libsemifinal_signal.so"><offset>7.0</offset><period>28.0</period><red>10.0</red><green>15.0</green></plugin></model>
+</link><plugin name="signal_cycle" filename="libsemifinal_signal.so"><offset>7.0</offset><period>30.0</period><red>10.0</red><green>15.0</green></plugin></model>
+<gui fullscreen="0"><camera name="user_camera"><pose frame="">2.100000 -2.600000 4.200000 0 -0.730000 1.570796</pose><view_controller>orbit</view_controller></camera></gui>
 </world></sdf>

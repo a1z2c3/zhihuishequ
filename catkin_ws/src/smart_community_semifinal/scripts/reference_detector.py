@@ -15,6 +15,20 @@ import cv2
 import numpy as np
 
 
+# Candidates that cleared the ORB/RANSAC match but were dropped by the
+# photometric check.  The node drains this list once per status tick and logs
+# it, so a marginal reference can be diagnosed from scene.log instead of
+# showing up only as a missing person in the final count.  Kept rospy-free so
+# the offline tests can import this module.
+REJECTIONS = []
+
+
+def drain_rejections():
+    drained = list(REJECTIONS)
+    del REJECTIONS[:]
+    return drained
+
+
 def imread(path, flags=cv2.IMREAD_COLOR):
     return cv2.imdecode(np.fromfile(text_type(path), dtype=np.uint8), flags)
 
@@ -126,7 +140,19 @@ class ReferenceDetector(object):
             b=rectified[pad_y:-pad_y,pad_x:-pad_x].astype(np.float32).ravel()
             a-=a.mean();b-=b.mean()
             correlation=float(np.dot(a,b)/max(1e-6,np.linalg.norm(a)*np.linalg.norm(b)))
-            if correlation < (0.76 if item["category"]=="plate" else 0.58):
+            # Plates keep the strict 0.76 bound.  Person standees are thin
+            # boards whose rectified crop picks up a little surrounding floor,
+            # and a board standing next to another one loses more: resident_3
+            # measured 0.5844 on the single frame it survived, i.e. 0.0044 above
+            # the old 0.58 bound, so it was admitted only intermittently and the
+            # ledger's 3-frame quorum then dropped it.  The ORB match is still
+            # the primary gate (min_inliers 10, min_ratio 0.40), so 0.50 keeps
+            # the check meaningful while removing the coin flip.
+            bound = 0.76 if item["category"] == "plate" else 0.50
+            if correlation < bound:
+                REJECTIONS.append({"label": item["label"], "category": item["category"],
+                                   "correlation": round(correlation, 4),
+                                   "inliers": int(n_inliers), "bound": bound})
                 continue
             ocr=None
             if item['category']=='plate':
@@ -139,17 +165,24 @@ class ReferenceDetector(object):
                          'complete':False,'error':type(exc).__name__}
             x,y,bw,bh = cv2.boundingRect(quad)
             score = float(min(1, ratio)*min(1, n_inliers/24.0)*min(1, spread/0.10))
+            # The homography is fitted to the printed artwork, which may be
+            # letterboxed inside the regulated physical board.  Use the
+            # artwork dimensions for PnP while retaining board dimensions in
+            # the manifest for geometry and compliance checks.
+            metric_width = float(item.get('artwork_width_m', item['width_m']))
+            metric_height = float(item.get('artwork_height_m', item['height_m']))
             # Interior feature correspondences constrain metric pose better than
             # four extrapolated homography corners on a narrow standing card.
             indices=np.flatnonzero(mask.ravel()).tolist()
             indices.sort(key=lambda k:(source[k,1],source[k,0]))
             indices=[indices[k] for k in np.linspace(0,len(indices)-1,min(64,len(indices))).astype(int)]
-            metric=np.column_stack(((source[indices,0]/(w-1)-.5)*item['width_m'],
-                                    (source[indices,1]/(h-1)-.5)*item['height_m'],np.zeros(len(indices))))
+            metric=np.column_stack(((source[indices,0]/(w-1)-.5)*metric_width,
+                                    (source[indices,1]/(h-1)-.5)*metric_height,np.zeros(len(indices))))
             output.append({"label": item["label"], "category": item["category"],
                            "confidence": round(score, 4), "bbox": [x,y,bw,bh],
                            "quad": quad.round(2).tolist(), "inliers": n_inliers,
-                           "width_m":item["width_m"],"height_m":item["height_m"],
+                           "width_m":metric_width,"height_m":metric_height,
+                           "board_width_m":item["width_m"],"board_height_m":item["height_m"],
                            "pose_correspondences":{"object":metric.tolist(),"image":target[indices].tolist()},
                            "photometric_correlation":round(correlation,4),
                            "method": "official_reference_orb_ransac",

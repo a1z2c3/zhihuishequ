@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """Meaningful runtime contracts, executable on stock Python 2.7 and Python 3."""
 from __future__ import division,print_function
-import io,json,math,os,shutil,subprocess,sys,tempfile,unittest
+import io,json,math,os,re,shutil,subprocess,sys,tempfile,unittest
 import xml.etree.ElementTree as ET
 import cv2,numpy as np
 PKG=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -64,6 +64,43 @@ class RuntimeContracts(unittest.TestCase):
         p.gate.reset();p.previous=None
         send(p,'green',2.2)
         self.assertAlmostEqual(p.green_start,1.0)
+
+    def test_no_bare_non_ascii_literal_reaches_a_ros_logger(self):
+        """rospy's Python 2 logger encodes its argument as ASCII.
+
+        A plain `str` carrying UTF-8 bytes therefore raises UnicodeEncodeError.
+        Inside the perception transaction that exception is caught and the whole
+        frame is discarded, which surfaces as an observation_timeout instead of
+        an obvious crash.  Non-ASCII is safe only as a `u''` literal (optionally
+        wrapped in ros_text(), which turns it into UTF-8 bytes); anything else is
+        an offender.
+        """
+        pattern=re.compile(r'(?:loginfo|logwarn|logerr|logdebug|logfatal)\s*\(\s*'
+                           r'(?:[\w.]+\s*\(\s*)?'          # optional ros_text( wrapper
+                           r'(?P<prefix>[A-Za-z]*)(?P<quote>[\'"])(?P<literal>.*?)(?P=quote)')
+        offenders=[]
+        # The literal check alone cannot see a message that is ASCII in source
+        # but receives a unicode value at run time -- `'x %s' % (u'\u82cf',)`
+        # is unicode, and rospy then encodes it as ASCII and raises inside the
+        # observation transaction, silently rolling back the plate quorum.  Pin
+        # the stronger invariant for the node that owns that transaction: every
+        # ros logger call there must be routed through ros_text().
+        node=io.open(os.path.join(PKG,'scripts','official_perception_node.py'),
+                     encoding='utf-8').read()
+        bare=[line.strip() for line in node.splitlines()
+              if re.search(r'rospy\.log\w+\s*\(',line) and 'ros_text' not in line]
+        self.assertEqual(bare,[],'ros logger call not wrapped in ros_text: %s'%bare)
+        for folder in ('scripts','tools'):
+            for name in sorted(os.listdir(os.path.join(PKG,folder))):
+                if not name.endswith('.py'):continue
+                with io.open(os.path.join(PKG,folder,name),encoding='utf-8') as stream:
+                    for number,line in enumerate(stream,1):
+                        for match in pattern.finditer(line):
+                            if match.group('prefix')=='u':continue
+                            if any(ord(char)>127 for char in match.group('literal')):
+                                offenders.append('%s:%d %s'%(name,number,
+                                                             match.group('literal')[:40]))
+        self.assertEqual(offenders,[],'non-ASCII literal passed to a ROS logger: %s'%offenders)
 
     def test_signal_process_waits_for_exact_camera_transform(self):
         source=os.path.join(PKG,'scripts','signal_perception_node.py')
@@ -224,6 +261,243 @@ class RuntimeContracts(unittest.TestCase):
         for t in [1.1,1.2,1.3]:send(p,'green',t)
         self.assertTrue(p.ready(1.3));self.assertFalse(p.ready(1.7))
         send(p,'green',2.);self.assertFalse(p.ready(2.))
+
+    def test_witnessed_red_onset_locks_the_phase_clock(self):
+        """A red episode is a cycle edge too, so it may anchor the clock.
+
+        Without this, a robot that reaches a gate already inside the green
+        window has no witnessed red -> green transition and no clock, so it
+        waits a whole extra cycle.  The red onset pins the cycle start exactly,
+        and the same 5 s red-duration guard that protects the green anchor is
+        reused so a one-frame false red still cannot lock anything.
+        """
+        cycle={'period_s':28.,'red_s':10.,'green_s':15.,'yellow_s':3.,
+               'offsets_s':{'light_1':0.,'light_2':7.}}
+        p=CrossingPolicy(cycle);p.arm(stop())
+        send(p,'green',1.)
+        # The perception publishes around 10 Hz, so red frames arrive roughly
+        # every 0.3 s.  red_gap_limit is 1.0 s and the freshness gate rejects
+        # anything older than 0.35 s, so a realistic cadence keeps the episode
+        # continuous.
+        for t in (2.0,2.3,2.6,2.9,3.2,3.5,3.8,4.1,4.4,4.7,5.0,5.3,5.6,5.9,6.2,6.5,6.8,7.1,7.4,7.7):
+            send(p,'red',t)
+        self.assertIsNotNone(p.clock_origin)
+        # red onset 2 s + light_1 offset 0 => cycle origin at world time 2 s
+        self.assertAlmostEqual(p.clock_origin,2.,places=3)
+        send(p,'yellow',8.)
+        send(p,'green',13.)          # gap > max_gap and previous is not red
+        self.assertIsNotNone(p.green_start)
+        self.assertAlmostEqual(p.green_start,12.,places=3)
+
+    def test_short_false_red_cannot_lock_the_phase_clock(self):
+        cycle={'period_s':28.,'red_s':10.,'green_s':15.,'yellow_s':3.,
+               'offsets_s':{'light_1':0.,'light_2':7.}}
+        p=CrossingPolicy(cycle);p.arm(stop())
+        send(p,'green',1.);send(p,'red',2.);send(p,'green',3.)
+        self.assertIsNone(p.clock_origin)
+
+    def test_red_after_a_gap_cannot_lock_the_phase_clock(self):
+        cycle={'period_s':28.,'red_s':10.,'green_s':15.,'yellow_s':3.,
+               'offsets_s':{'light_1':0.,'light_2':7.}}
+        p=CrossingPolicy(cycle);p.arm(stop())
+        send(p,'green',1.)
+        send(p,'red',5.)             # gap too large to be a continuous edge
+        send(p,'red',11.)
+        self.assertIsNone(p.clock_origin)
+
+    def test_false_green_during_a_locked_red_window_cannot_authorize(self):
+        """The red-onset lock must not turn a misread green into a permit.
+
+        After locking from a red onset the policy can resolve a first-sight
+        green against the configured period.  A green reported while the cycle
+        is still inside its red window must be rejected, otherwise the lock
+        would weaken the very rule it exists to serve.
+        """
+        cycle={'period_s':28.,'red_s':10.,'green_s':15.,'yellow_s':3.,
+               'offsets_s':{'light_1':0.,'light_2':7.}}
+        p=CrossingPolicy(cycle);p.arm(stop())
+        send(p,'green',1.)
+        for t in (2.0,2.3,2.6,2.9,3.2,3.5,3.8,4.1,4.4,4.7,5.0,5.3,5.6,5.9,6.2,6.5,6.8,7.1,7.4,7.7):
+            send(p,'red',t)
+        self.assertAlmostEqual(p.clock_origin,2.,places=3)
+        # Red runs to world time 12 s.  A green claimed at 8 s is false.
+        send(p,'yellow',8.)
+        send(p,'green',9.)
+        self.assertIsNone(p.green_start)
+        self.assertFalse(p.ready(9.))
+
+    def test_person_photometric_bound_is_not_tighter_than_plate(self):
+        """Pin the two photometric bounds and the rejection channel.
+
+        A person standee's rectified crop always carries a little surrounding
+        floor, and one standing beside another carries more.  resident_3
+        measured 0.5844 on the only frame it survived -- 0.0044 above the old
+        0.58 bound -- so it was admitted intermittently and the ledger's
+        three-frame quorum then dropped it from the street count.  The bound is
+        now 0.50 for people while plates keep the strict 0.76, and dropped
+        candidates are recorded so scene.log can explain a shortfall.
+        """
+        with io.open(os.path.join(PKG,'scripts','reference_detector.py'),encoding='utf-8') as stream:
+            text=stream.read()
+        self.assertIn("bound = 0.76 if item[\"category\"] == \"plate\" else 0.50",text)
+        self.assertIn("REJECTIONS.append(",text)
+        self.assertIn("def drain_rejections(",text)
+        # The offline tests import this module, so it must stay rospy-free.
+        self.assertNotIn("import rospy",text)
+
+    def test_rejection_drain_is_destructive(self):
+        import reference_detector as rd
+        del rd.REJECTIONS[:]
+        rd.REJECTIONS.append({'label':'x','correlation':0.51,'inliers':30,'bound':0.5})
+        first=rd.drain_rejections()
+        self.assertEqual(len(first),1)
+        self.assertEqual(rd.drain_rejections(),[])
+
+    def test_evaluator_wall_budget_is_consistent_with_the_outer_timeout(self):
+        """The evaluator's own wall cap must fire before the shell timeout.
+
+        A full lap needs about 240 simulated seconds, and the two signal gates
+        can add up to 28 simulated seconds each when the robot arrives with too
+        little green left to cross safely.  At the measured RTF that worst case
+        approaches 1450 wall seconds, so the old 1500 s cap left almost no
+        margin and a slow run would have been reported as a failure.  The cap
+        is now 1800 s with the outer `timeout` at 1950 s so the evaluator still
+        writes run_result.json and INDEX.md on its own terms.
+        """
+        with io.open(os.path.join(PKG,'tools','evaluate_run.py'),encoding='utf-8') as stream:
+            evaluator=stream.read()
+        root=os.path.dirname(os.path.dirname(os.path.dirname(PKG)))
+        with io.open(os.path.join(root,'vm_run_lap.sh'),encoding='utf-8') as stream:
+            launcher=stream.read()
+        cap=re.search(r'monotonic\(\)-start>(\d+)',evaluator)
+        outer=re.search(r'--kill-after=10s\s+(\d+)s',launcher)
+        self.assertIsNotNone(cap,'evaluator wall cap not found')
+        self.assertIsNotNone(outer,'outer timeout not found')
+        cap,outer=int(cap.group(1)),int(outer.group(1))
+        self.assertGreaterEqual(cap,1800)
+        self.assertGreater(outer,cap,'outer timeout must exceed the evaluator cap')
+
+    def test_plate_set_keeps_two_random_numbers(self):
+        """The contest allows the supplied example plates but requires at least
+        two of the three to carry RANDOM numbers, so the pipeline cannot lean on
+        having seen the number before.  Plate 1 stays the official example as a
+        known reference; plates 2 and 3 come from assets/random_plates/ and are
+        reproduced by tools/make_random_plates.py.  Regenerating them changes
+        the expected labels in build_official_scene.py, which is intended.
+        """
+        import hashlib
+        with io.open(os.path.join(PKG,'assets','manifest.json'),encoding='utf-8') as stream:
+            manifest=json.load(stream)
+        plates=[r for r in manifest['recognition_assets'] if r['category']=='plate']
+        self.assertEqual(len(plates),3)
+        for row in plates:
+            self.assertEqual(round(float(row['width_m']),3),0.095)
+            self.assertEqual(round(float(row['height_m']),3),0.030)
+        random_rows=[r for r in plates if r.get('text_status')=='randomly_generated']
+        self.assertGreaterEqual(len(random_rows),2,
+            'at least two plates must carry random numbers')
+        for row in random_rows:
+            source=os.path.join(PKG,'assets','random_plates',row['source'].split('/')[-1])
+            self.assertTrue(os.path.isfile(source),'missing random plate source: %s'%source)
+            digest=hashlib.sha256(open(source,'rb').read()).hexdigest()
+            self.assertEqual(digest,row['sha256'],'random plate hash mismatch: %s'%source)
+        # The route must expect exactly the labels the manifest declares.
+        with io.open(os.path.join(PKG,'config','layout.json'),encoding='utf-8') as stream:
+            layout=json.load(stream)
+        expected=sorted(e['expected_label'] for e in layout['route']
+                        if e.get('expected_category')=='plate')
+        declared=sorted(r['label'] for r in plates)
+        self.assertEqual(expected,declared,'route expected_label must match the manifest')
+
+    def test_traffic_light_geometry_and_cycle_match_the_official_sheet(self):
+        """Pin the signal against the dimensioned photo in 复赛资料/红绿灯.
+
+        The photo labels the housing 64 cm wide by 14 cm high, the leg section
+        2.5 cm, the overall height 48 cm and the ground-to-housing-bottom gap
+        34 cm.  It cannot show the housing depth; 5 cm is used.  The contest
+        also asks for roughly 10 s red / 5 s yellow / 15 s green, so the period
+        is 30 s -- the plugin derives yellow as period minus red minus green,
+        which is why an old 28 s period silently produced a 3 s yellow.
+        """
+        with io.open(os.path.join(PKG,'worlds','official_semifinal.world'),encoding='utf-8') as stream:
+            world=stream.read()
+        models=re.findall(r'<model name="(light_\d)">(.*?)</model>',world,re.S)
+        self.assertEqual(sorted(name for name,_ in models),['light_1','light_2'])
+        for name,body in models:
+            boxes=[[float(v) for v in b] for b in
+                   re.findall(r'<box><size>([\d.]+) ([\d.]+) ([\d.]+)</size></box>',body)]
+            housing=[b for b in boxes if abs(b[0]-0.64)<1e-6]
+            legs=[b for b in boxes if abs(b[0]-0.025)<1e-6]
+            self.assertEqual(len(housing),1,'%s: housing box'%name)
+            self.assertAlmostEqual(housing[0][1],0.05,places=6,
+                                   msg='%s: housing depth must be 5 cm'%name)
+            self.assertAlmostEqual(housing[0][2],0.14,places=6,
+                                   msg='%s: housing height must be 14 cm'%name)
+            self.assertTrue(legs,'%s: the housing must stand on legs, not float'%name)
+            for leg in legs:
+                self.assertAlmostEqual(leg[1],0.025,places=6,
+                                       msg='%s: leg section must be 2.5 cm'%name)
+            # housing pose puts its top at 0.48 m and its bottom at 0.34 m
+            top=0.41+housing[0][2]/2.0; bottom=0.41-housing[0][2]/2.0
+            self.assertAlmostEqual(top,0.48,places=6,
+                                   msg='%s: overall height must be 48 cm'%name)
+            self.assertAlmostEqual(bottom,0.34,places=6,
+                                   msg='%s: ground to housing bottom must be 34 cm'%name)
+            leg_top=max(0.17+leg[2]/2.0 for leg in legs)
+            self.assertLessEqual(leg_top,top+1e-6,
+                                 msg='%s: legs must not exceed the housing top'%name)
+        with io.open(os.path.join(PKG,'config','layout.json'),encoding='utf-8') as stream:
+            cycle=json.load(stream)['signal_cycle']
+        self.assertAlmostEqual(cycle['red_s'],10.0,places=6)
+        self.assertAlmostEqual(cycle['green_s'],15.0,places=6)
+        self.assertAlmostEqual(cycle['yellow_s'],5.0,places=6)
+        self.assertAlmostEqual(cycle['period_s'],30.0,places=6)
+        self.assertAlmostEqual(cycle['red_s']+cycle['yellow_s']+cycle['green_s'],
+                               cycle['period_s'],places=6,
+                               msg='red + yellow + green must fill the period')
+        # The plugin has no yellow element: it must derive 5 s from the others,
+        # so its fallback period has to stay 30 s as well.
+        with io.open(os.path.join(PKG,'src','signal_plugin.cpp'),encoding='utf-8') as stream:
+            plugin=stream.read()
+        self.assertIn('period_ = 30.0',plugin)
+
+    def test_field_wall_encloses_the_track_and_stays_out_of_the_guard_window(self):
+        """The training deck asks for a wall that encloses the track and is
+        visible to the robot's lidar.
+
+        A wall placed ON the 4.2 m field edge is unusable: the top lane centre
+        is y=3.90, the guard watches |lateral| <= 0.2735 m and the robot may sit
+        0.28 m off centre, so the wall would read as a side obstacle for a third
+        of all legal poses and trigger spurious avoidance along the whole top
+        straight.  The wall therefore stands 0.40 m outside the field, where a
+        scan of all 5037 legal poses shows no change to forward_obstacle,
+        left_free or right_free.  This test pins the thickness, the height and
+        the stand-off that make that true.
+        """
+        with io.open(os.path.join(PKG,'worlds','official_semifinal.world'),encoding='utf-8') as stream:
+            world=stream.read()
+        walls=re.findall(r'<model name="(field_wall_\w+)"><static>true</static>'
+                         r'<pose>([-\d. ]+)</pose>.*?<box><size>([\d.]+) ([\d.]+) ([\d.]+)</size></box>',
+                         world,re.S)
+        self.assertEqual(len(walls),4,'a closed wall needs four sides')
+        lane_y=3.90; window=0.2735; envelope=0.28
+        for name,pose,size_x,size_y,size_z in walls:
+            sx,sy,sz=float(size_x),float(size_y),float(size_z)
+            self.assertAlmostEqual(min(sx,sy),0.005,places=6,
+                                   msg='%s: wall must be 5 mm thick'%name)
+            self.assertAlmostEqual(sz,0.50,places=6,
+                                   msg='%s: wall must be 0.50 m tall so the '
+                                       'z=0.125 m laser plane hits it'%name)
+            px,py=float(pose.split()[0]),float(pose.split()[1])
+            if name.endswith('north'):
+                self.assertGreaterEqual(py-sy/2.0,lane_y+envelope+window,
+                    'north wall inner face is inside the guard window')
+            if name.endswith('south'):
+                self.assertLessEqual(py+sy/2.0,-(lane_y+envelope+window),
+                    'south wall inner face is inside the guard window')
+        # The 4.2 m floor itself is unchanged.
+        with io.open(os.path.join(PKG,'config','layout.json'),encoding='utf-8') as stream:
+            self.assertEqual(json.load(stream)['field_size_m'],[4.2,4.2])
 
     def test_late_green_and_wrong_light_cannot_authorize(self):
         p=CrossingPolicy();p.arm(stop());send(p,'red',1.)
@@ -388,7 +662,7 @@ class RuntimeContracts(unittest.TestCase):
                'left_free':True,'right_free':False}
         for t in [1.,1.1,1.2]:
             v,vy,w=p.step((0,0,0),t,guard=guard)
-        self.assertEqual(p.phase,'avoid');self.assertEqual((v,vy,w),(0.,.08,0.))
+        self.assertEqual(p.phase,'avoid');self.assertEqual((v,vy,w),(.060,.08,0.))
         self.assertEqual(p.step((0,.09,0),2.0,guard=guard)[0],.08)
         self.assertEqual(p.phase,'avoid')
         v,vy,w=p.step((0,.09,0),3.0,guard={'obstacle_ahead':False,
@@ -444,7 +718,7 @@ class RuntimeContracts(unittest.TestCase):
         for t in [1.,1.1,1.2]:
             result=p.step((0,0,0),t,guard=guard)
         vx,vy,wz=result
-        self.assertEqual(vx,0.)
+        self.assertEqual(vx,patrol_core.Patrol([{'name':'g','xy':[1,0],'yaw':0}]).avoid_forward_speed)
         self.assertEqual(vy,.08)
         self.assertEqual(wz,0.)
 
@@ -743,7 +1017,12 @@ class RuntimeContracts(unittest.TestCase):
             cycle=json.load(stream)['signal_cycle']
         root=ET.parse(os.path.join(PKG,'worlds','official_semifinal.world')).getroot()
         models={m.get('name'):m for m in root.findall('./world/model')}
-        for name,offset in [('light_1',0.0),('light_2',cycle['light_2_offset_s'])]:
+        # Read both offsets from the configured cycle instead of hardcoding
+        # light_1: the contest fixes neither the period nor the phase
+        # offsets, and light_1's offset is deliberately chosen so the first
+        # gate's red window covers the robot's arrival.
+        offsets=cycle['offsets_s']
+        for name,offset in [('light_1',offsets['light_1']),('light_2',offsets['light_2'])]:
             plugin=models[name].find("plugin[@name='signal_cycle']")
             self.assertIsNotNone(plugin)
             self.assertAlmostEqual(float(plugin.findtext('offset')),float(offset))
@@ -752,6 +1031,33 @@ class RuntimeContracts(unittest.TestCase):
             self.assertAlmostEqual(float(plugin.findtext('green')),float(cycle['green_s']))
             self.assertLessEqual(float(plugin.findtext('red'))+float(plugin.findtext('green')),
                                  float(plugin.findtext('period')))
+
+    def test_card_meshes_keep_the_texture_upright(self):
+        """The artwork must not be mirrored vertically.
+
+        The recognition pipeline matches the rendered board against the
+        reference PNG with ORB.  A vertically flipped front face still renders
+        a plausible-looking board, but every descriptor is wrong, so nothing is
+        ever committed and each observation times out -- a silent, expensive
+        failure.  The box mesh introduced for the board edge shipped exactly
+        that bug once; pin the convention here.
+        """
+        for name in ('resident_1','resident_4','plate_1'):
+            path=os.path.join(PKG,'models',name,'meshes','card.dae')
+            with io.open(path,encoding='utf-8') as stream:
+                text=stream.read()
+            positions=[float(v) for v in
+                       re.search(r'count="(?:12|24)">([^<]+)</float_array>',text).group(1).split()]
+            uvs=[float(v) for v in
+                 re.search(r'count="(?:8|16)">([^<]+)</float_array>',text).group(1).split()]
+            corners=[(positions[i*3],positions[i*3+2],uvs[i*2],uvs[i*2+1])
+                     for i in range(len(positions)//3)]
+            lowest=min(c[1] for c in corners)
+            bottom=[c for c in corners if abs(c[1]-lowest)<1e-6]
+            self.assertTrue(bottom,name)
+            for _x,_z,u,v in bottom:
+                self.assertAlmostEqual(v,0.,places=6,
+                    msg='%s: bottom edge must map to V=0 (texture would be flipped)'%name)
 
     def test_previously_missed_people_have_clear_legal_observation_views(self):
         package=PKG

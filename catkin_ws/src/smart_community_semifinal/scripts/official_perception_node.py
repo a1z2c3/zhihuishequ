@@ -11,6 +11,7 @@ from reference_detector import ReferenceDetector,imwrite
 from semifinal_core import EvidenceWriter,StreetLedger
 from image_geometry import decode_image,planar_position
 from runtime_compat import ros_text,isfinite
+import reference_detector
 
 
 class Node(object):
@@ -352,11 +353,41 @@ class Node(object):
                     'last_processed_stamp':self.last_processed_stamp})))
                 summaries={street:self.ledger.summary(street) for street in ('A','B')}
                 self.summary.publish(String(data=json.dumps(summaries)))
+                # Human-readable per-view output required by the contest:
+                # keep the machine-readable summary above, and print the
+                # current street totals in recognition order.
+                # Surface candidates the photometric bound dropped, so a
+                # marginal reference is visible in scene.log rather than only
+                # as a shortfall in the final population count.
+                for rejected in reference_detector.drain_rejections():
+                    rospy.loginfo(ros_text('Reference dropped: %s correlation %.4f < %.2f (inliers %d)' % (
+                        rejected['label'], rejected['correlation'],
+                        rejected['bound'], rejected['inliers'])))
+                if context.get('street') in ('A','B'):
+                    street_summary=summaries[context['street']]
+                    # Keep the literal a unicode string and hand it to
+                    # ros_text(): rospy's Python 2 logger encodes its argument
+                    # as ASCII, so a plain str carrying UTF-8 bytes raises
+                    # UnicodeEncodeError.  That exception is caught by the
+                    # transaction handler below and would silently fail every
+                    # frame, which shows up as observation_timeout.
+                    rospy.loginfo(ros_text(u'[%s街区][%s] 社区人员 %d，非社区人员 %d，总计 %d' % (
+                        context['street'],context.get('view',''),
+                        street_summary['resident'],street_summary['visitor'],
+                        street_summary['total'])))
                 plate_summary=dict(self.plate_results)
                 self.plate_summary.publish(String(data=json.dumps(
                     plate_summary,ensure_ascii=False)))
-                rospy.loginfo('Street ledger %s'%json.dumps(summaries))
+                rospy.loginfo(ros_text('Street ledger %s'%json.dumps(summaries)))
             except Exception as exc:
+                # The error path must never raise: an exception raised here
+                # would replace the original failure and lose the diagnosis.
+                # ros_text keeps a unicode exception message from tripping the
+                # Python 2 ASCII logger, exactly as the success path does.
+                try:
+                    rospy.logerr_throttle(2, ros_text('Perception failed: %s' % exc))
+                except Exception:
+                    pass
                 # Evidence writing is part of the observation transaction.  If
                 # the paired PNG/JSON record fails, do not leave a successful
                 # ledger or plate quorum behind for a later frame to inherit.
@@ -370,7 +401,6 @@ class Node(object):
                         self.plate_ocr_votes=ocr_votes_before
                         self.plate_results=plate_results_before
                         self.context_instance_frames=context_frames_before
-                rospy.logerr_throttle(2,'Perception failed: %s'%exc)
                 if context.get('active'):
                     self.status.publish(String(data=json.dumps({'view':context.get('view'),
                         'context_id':context.get('context_id'),'stamp':stamp,'count':0,

@@ -22,6 +22,10 @@ class Guard(object):
         cycle=self.layout.get('signal_cycle',{})
         self.listener=tf.TransformListener();self.policy=CrossingPolicy(cycle);self.lock=threading.RLock()
         self.command=Twist();self.command_at=None;self.command_sim=None;self.scan=None;self.scan_at=None;self.pose=None
+        # Laser rays can straddle a mesh edge in Gazebo. Hold a selected
+        # one-way corridor briefly so the command does not chatter between
+        # motion and zero while Patrol keeps the same avoidance side locked.
+        self.obstacle_hold_until=0.0;self.obstacle_hold_side=None
         self.output=rospy.Publisher('/cmd_vel',Twist,queue_size=1)
         self.status=rospy.Publisher('/semifinal/guard_status',String,queue_size=1)
         rospy.Subscriber('/semifinal/cmd_vel_requested',Twist,self.on_command,queue_size=1)
@@ -118,6 +122,17 @@ class Guard(object):
                     right_obstacle_ahead=clearance.get('right_obstacle_ahead',obstacle_ahead)
                     left_free=clearance['left_free'];right_free=clearance['right_free']
                     recenter_clear=clearance['recenter_clear']
+                    if forward_obstacle:
+                        self.obstacle_hold_until=max(self.obstacle_hold_until,now+.22)
+                        if left_free != right_free:
+                            self.obstacle_hold_side='left' if left_free else 'right'
+                    elif now>=self.obstacle_hold_until:
+                        self.obstacle_hold_side=None
+                    if (now<self.obstacle_hold_until and
+                            self.obstacle_hold_side is not None and
+                            left_free==right_free):
+                        if self.obstacle_hold_side=='left':left_free=True
+                        else:right_free=True
                     if forward_obstacle:
                         if not left_free and not right_free:
                             speed=0.;lateral=0.;reason='forward_obstacle_wait'

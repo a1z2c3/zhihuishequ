@@ -19,9 +19,9 @@ out=rospy.get_param('~output_dir',os.path.expanduser('~/semifinal_evaluation'));
 with io.open(os.path.join(pkg,'config/layout.json'),encoding='utf-8') as f:layout=json.load(f)
 cycle=layout.get('signal_cycle',{'period_s':28.0,'red_s':10.0,'green_s':15.0,'yellow_s':3.0,
                                  'light_2_offset_s':7.0,
-                                 'offsets_s':{'light_1':0.0,'light_2':7.0}})
+                                 'offsets_s':{'light_1':26.0,'light_2':7.0}})
 clock_offsets=cycle.get('offsets_s') or {
-    'light_1':0.0,
+    'light_1':26.0,
     'light_2':float(cycle.get('light_2_offset_s',7.0)),
 }
 obstacles=physical_obstacles(os.path.join(pkg,'worlds/official_semifinal.world'))
@@ -113,5 +113,5 @@ while not rospy.is_shutdown():
                 'camera_samples':images,'localization_samples':localization,'simulated_elapsed':None if first_time is None else rospy.Time.now().to_sec()-first_time}
         with io.open(os.path.join(out,'run_result.tmp'),'w',encoding='utf-8') as f:f.write(json.dumps(result,ensure_ascii=False,indent=2))
         os.rename(os.path.join(out,'run_result.tmp'),os.path.join(out,'run_result.json'))
-        if task.get('phase') in ('done','failed') or (first_time is not None and rospy.Time.now().to_sec()-first_time>700) or monotonic()-start>1500:break
+        if task.get('phase') in ('done','failed') or (first_time is not None and rospy.Time.now().to_sec()-first_time>700) or monotonic()-start>1800:break
 print('RUN_EVALUATION_COMPLETE',task)

@@ -14,12 +14,14 @@ class SemifinalSignal : public ModelPlugin {
   void Load(physics::ModelPtr model, sdf::ElementPtr sdf) override {
     model_ = model;
     offset_ = sdf->HasElement("offset") ? sdf->Get<double>("offset") : 0.0;
-    period_ = sdf->HasElement("period") ? sdf->Get<double>("period") : 28.0;
+    period_ = sdf->HasElement("period") ? sdf->Get<double>("period") : 30.0;
     red_ = sdf->HasElement("red") ? sdf->Get<double>("red") : 10.0;
     green_ = sdf->HasElement("green") ? sdf->Get<double>("green") : 15.0;
     // A malformed world must not create a negative fmod period or a phase
-    // with no yellow interval.  Keep the documented defaults as a fallback.
-    if (!std::isfinite(period_) || period_ <= 0.0) period_ = 28.0;
+    // with no yellow interval.  Keep the documented 30 s / 10 s / 15 s cycle
+    // (which leaves a 5 s yellow) as the fallback so a missing parameter can
+    // never silently shorten the yellow below what the contest asks for.
+    if (!std::isfinite(period_) || period_ <= 0.0) period_ = 30.0;
     if (!std::isfinite(red_) || red_ < 0.0) red_ = 10.0;
     if (!std::isfinite(green_) || green_ < 0.0) green_ = 15.0;
     if (red_ + green_ > period_) {
