@@ -443,7 +443,16 @@ def main():
         # obstacle -- a false avoid that can stall a lap.  At +/-0.32 the inner
         # face clears the corridor by 34 mm, which is the whole point of the
         # 3 cm.  Do not reduce it again; verify with
-        # output/_audit22/leg_false_trigger.py.
+        # 比赛交付物/_诊断工具/leg_false_trigger.py, which prints the false
+        # trigger count and blames each one on a single object.
+        #
+        # Residual, located but not fixed: light_2's east leg sits at y=0.56,
+        # inside the bottom lane's legal corridor [0.02, 0.58], so the 99
+        # remaining hits all come from it and cluster in the bottom-right turn.
+        # Its lateral offset is set by that y difference (0.26 m), which an x
+        # shift cannot change; clearing it entirely needs the lamp at
+        # y >= 0.776, which collides with past_light_2 (y=0.78).  That is a
+        # layout redesign, not a one-line change.
         for lx in [-.32,.32]:
             parts.append('<visual name="leg_%s"><pose>%f 0 .17 0 0 0</pose><geometry><box><size>.025 .025 .34</size></box></geometry></visual><collision name="leg_%s"><pose>%f 0 .17 0 0 0</pose><geometry><box><size>.025 .025 .34</size></box></geometry></collision>'%(lx,lx,lx,lx))
         offset = float(SIGNAL_CYCLE["offsets_s"][name])
