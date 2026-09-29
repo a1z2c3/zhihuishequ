@@ -328,7 +328,15 @@ class ReferenceDetector(object):
             # Pillow 5.1 in Ubuntu 18.04 has no rectangle(width=...).
             for offset in (0,1):
                 draw.rectangle((x+offset,y+offset,x+w-offset,y+h-offset), outline=(15,220,145))
-            label = "%s %s %.2f" % (d["category"], d["label"], d["confidence"])
+            # Person labels already begin with their category (resident_9,
+            # visitor_F1), so prefixing the category printed the word twice --
+            # "resident resident_9 0.91" -- which shows up on camera and in the
+            # evidence frames.  Only add the category when the label does not
+            # already carry it, which keeps "plate 苏AB8Q62" readable.
+            name = d["label"]
+            if not name.startswith(d["category"]):
+                name = "%s %s" % (d["category"], name)
+            label = "%s %.2f" % (name, d["confidence"])
             if d.get('category')=='plate':
                 state=d.get('ocr_display_status','pending')
                 if state=='verified':
