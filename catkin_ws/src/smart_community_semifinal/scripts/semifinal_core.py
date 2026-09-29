@@ -290,7 +290,8 @@ class EvidenceWriter(object):
             raise IOError("annotated image was not saved")
         row = {"schema_version": 1, "run_id": self.run_id, "sequence": sequence,
                "frame_id": frame_id, "stamp": stamp, "image": name,
-               "confidence_kind": "uncalibrated_matching_score", "detections": detections}
+               "confidence_kind": "calibrated_reference_match_score_not_probability",
+               "detections": detections}
         line = json.dumps(row, ensure_ascii=False, allow_nan=False)
         with io.open(self.path, "a", encoding="utf-8") as stream:
             stream.write(line + "\n")

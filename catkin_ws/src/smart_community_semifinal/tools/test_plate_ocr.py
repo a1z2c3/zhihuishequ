@@ -157,6 +157,21 @@ class PlateOCRContracts(unittest.TestCase):
         self.assertIsInstance(score,float)
         self.assertGreaterEqual(score,0.)
 
+    def test_reference_confidence_calibration_preserves_raw_floor_and_uses_photo_quality(self):
+        low=ReferenceDetector._confidence_from_evidence(
+            'resident',.2347,.40,13./16.,.70,.88,.50)
+        high=ReferenceDetector._confidence_from_evidence(
+            'resident',.2347,.70,13./16.,.70,.88,.50)
+        self.assertGreater(low,.50)
+        self.assertGreater(high,low)
+        self.assertLessEqual(high,1.)
+
+    def test_reference_confidence_does_not_lower_strong_raw_score(self):
+        score=ReferenceDetector._confidence_from_evidence(
+            'plate',.91,.72,.95,.90,.80,.76)
+        self.assertGreaterEqual(score,.91)
+        self.assertLessEqual(score,1.)
+
     def test_b8_shape_ratio_survives_small_roll(self):
         image=self.images['鄂D7B5Q2'];height,width=image.shape
         matrix=cv2.getRotationMatrix2D((width/2.,height/2.),.75,1.)

@@ -53,7 +53,7 @@ Gmapping 的运动噪声与匹配步长按这个小场地的理想仿真里程�
 | `/semifinal/frame_status` | official_perception | 有效帧握手、墙钟耗时 |
 | `/semifinal/street_summary` | official_perception | A/B 社区与非社区人数 |
 
-标注图：`/semifinal/annotated`、`/semifinal/signal_annotated`。证据默认在 `~/semifinal_evidence_v2`，可用 `evidence_dir:=...` 指定，每次运行独立目录。JSON 与 PNG 共用来源帧编号/时间戳。分类分数未经概率校准。
+标注图：`/semifinal/annotated`、`/semifinal/signal_annotated`。证据默认在 `~/semifinal_evidence_v2`，可用 `evidence_dir:=...` 指定，每次运行独立目录。JSON 与 PNG 共用来源帧编号/时间戳。分类置信度是经过参考匹配证据校准的分数，不代表概率；原始匹配分数与各分项保留在 JSON 证据中。校准分 = 0.50（通过全部硬闸门的基线）+ 0.50 × 加权证据，四项证据为内点比例(0.35)/内点数量(0.25)/凸包覆盖(0.20)/光度相关(0.20)，权重按判别力人工分配而非拟合；因闸门已保证内点≥10、比例≥0.40，校准分的实际区间约为 [0.66, 1.00]，需要未校准的区分度时以 `raw_matching_score` 为准。
 
 ## 验证
 

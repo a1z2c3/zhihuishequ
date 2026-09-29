@@ -75,6 +75,39 @@ class ReferenceDetector(object):
         from plate_ocr import PlateCharacterRecognizer
         self.plate_ocr=PlateCharacterRecognizer(plate_templates)
 
+    @staticmethod
+    def _confidence_from_evidence(category, raw_score, ratio,
+                                  inlier_factor, spread_factor,
+                                  photometric_correlation, photometric_bound):
+        """Return a readable match score without weakening any accept gate.
+
+        The old display score multiplied four partially correlated terms.  A
+        correct, oblique standee with 10-15 well-distributed inliers could
+        therefore be rendered as 0.2-0.4 despite a strong photometric match.
+        This is a monotonic calibration of an already accepted reference match:
+        raw_score is retained for diagnostics, while the calibrated score uses
+        a weighted evidence mean and a 0.50 baseline earned by the existing
+        homography/photometric gates.  It is a score, not a probability.
+        """
+        clamp=lambda value:max(0.,min(1.,float(value)))
+        ratio=clamp(ratio);inlier_factor=clamp(inlier_factor)
+        spread_factor=clamp(spread_factor)
+        bound=clamp(photometric_bound)
+        photo=clamp((float(photometric_correlation)-bound)/max(1e-6,1.-bound))
+        # 权重按各因子对"匹配是否可靠"的判别力人工分配，不是拟合结果：
+        # ratio 最能反映误匹配比例，权重最高；inlier_factor 反映证据量；
+        # spread 与 photo 是辅助判据，各占 0.20。四项均为单调不减，
+        # 因此 evidence 对任何一项的改善都单调递增，不会出现"某项变好总分反降"。
+        evidence=(.35*ratio+.25*inlier_factor+.20*spread_factor+.20*photo)
+        # 0.50 是"已通过全部硬闸门"的基线，不是概率：检测走到这里必须已经
+        # 满足 ORB 内点 >=10、内点比例 >=0.40、光度相关 >=0.50。把基线写进
+        # 分数的代价是区间被压到 [0.50,1.00]，所以 raw_matching_score 一并
+        # 保留在证据里，需要看未校准的原始乘积时以它为准。
+        calibrated=.50+.50*clamp(evidence)
+        # Plates keep their stricter raw score unless the independent evidence
+        # supports a higher value; OCR remains a separate quality channel.
+        return round(max(clamp(raw_score), calibrated), 4)
+
     def detect(self, frame, categories=None):
         allowed=set(categories) if categories else None
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -164,8 +197,9 @@ class ReferenceDetector(object):
                     ocr={'text':'???????','characters':[], 'confidence':0.,
                          'complete':False,'error':type(exc).__name__}
             x,y,bw,bh = cv2.boundingRect(quad)
-            # 匹配质量分 = 三项乘积，每项截到 1。三者相乘意味着任何一项不满
-            # 都会明显拉低总分，这是有意的保守估计。
+            # Retain the conservative product as a raw diagnostic score.  The
+            # published confidence below is calibrated after the candidate has
+            # already cleared every hard gate (ORB, RANSAC and photometric).
             #   内点比例 ratio        —— 匹配干不干净
             #   内点数量 / SATURATION —— 证据够不够多
             #   凸包覆盖 / SPREAD_MIN —— 内点是否铺开（防"一小块凑很多点"）
@@ -175,7 +209,10 @@ class ReferenceDetector(object):
             # 检测本来就饱和，只有最差的一小撮被它扣分。
             inlier_factor = min(1, n_inliers/16.0)
             spread_factor = min(1, spread/0.10)
-            score = float(min(1, ratio)*inlier_factor*spread_factor)
+            raw_score = float(min(1, ratio)*inlier_factor*spread_factor)
+            score = self._confidence_from_evidence(
+                item["category"], raw_score, ratio, inlier_factor,
+                spread_factor, correlation, bound)
             # The homography is fitted to the printed artwork, which may be
             # letterboxed inside the regulated physical board.  Use the
             # artwork dimensions for PnP while retaining board dimensions in
@@ -190,11 +227,15 @@ class ReferenceDetector(object):
             metric=np.column_stack(((source[indices,0]/(w-1)-.5)*metric_width,
                                     (source[indices,1]/(h-1)-.5)*metric_height,np.zeros(len(indices))))
             output.append({"label": item["label"], "category": item["category"],
-                           "confidence": round(score, 4), "bbox": [x,y,bw,bh],
+                           "confidence": score, "raw_matching_score": round(raw_score, 4),
+                           "bbox": [x,y,bw,bh],
                            # 三个因子分开导出，便于定位低分到底卡在哪一项
                            "score_factors": {"ratio": round(float(ratio), 4),
                                              "inliers": round(inlier_factor, 4),
-                                             "spread": round(spread_factor, 4)},
+                                             "spread": round(spread_factor, 4),
+                                             "photometric": round(float(
+                                                 max(0.,min(1.,(correlation-bound)/
+                                                           max(1e-6,1.-bound)))),4)},
                            "quad": quad.round(2).tolist(), "inliers": n_inliers,
                            "width_m":metric_width,"height_m":metric_height,
                            "board_width_m":item["width_m"],"board_height_m":item["height_m"],
