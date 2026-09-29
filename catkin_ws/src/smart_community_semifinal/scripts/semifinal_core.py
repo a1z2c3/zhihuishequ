@@ -22,6 +22,39 @@ SIDE_SAFETY = .012
 REAR_EXTENT = BODY_LENGTH / 2.0 + FOOTPRINT_MARGIN
 
 
+def temporal_confidence(history, value, window=5, frames_since=1, max_gap=2):
+    """Fuse one accepted match with a bounded recent evidence window.
+
+    This is deliberately independent of ROS so the temporal confidence
+    contract can be tested on both Python 2.7 and Python 3.  It returns the
+    median history, the current fused score, and the retained window.
+
+    ``frames_since`` is the number of processed frames since this same
+    instance was last accepted.  A gap larger than ``max_gap`` discards the
+    history: an object that reappears after being unseen must not inherit a
+    stale high score, because that would let an old good match vouch for a
+    fresh and possibly wrong one.  Defaults keep the single-frame behaviour.
+
+    The fused value is deliberately lagging -- it is a weighted mean of the
+    current frame and the window median, so a single blurred frame cannot
+    dominate while a sustained degradation still shows up within a few frames.
+    """
+    try:
+        value=float(value);window=int(window);frames_since=int(frames_since)
+    except (TypeError,ValueError):
+        raise ValueError('invalid confidence history')
+    if window<1 or frames_since<1 or not isfinite(value) or not 0<=value<=1:
+        raise ValueError('invalid confidence history')
+    retained=list(history) if frames_since<=int(max_gap) else []
+    values=[float(item) for item in retained[-(window-1):]]+[value]
+    if not all(isfinite(item) and 0<=item<=1 for item in values):
+        raise ValueError('invalid confidence history')
+    ranked=sorted(values);middle=len(ranked)//2
+    median=(ranked[middle] if len(ranked)%2 else
+            .5*(ranked[middle-1]+ranked[middle]))
+    return median,.35*value+.65*median,values
+
+
 def wrap_angle(angle):
     return math.atan2(math.sin(angle), math.cos(angle))
 
@@ -290,7 +323,7 @@ class EvidenceWriter(object):
             raise IOError("annotated image was not saved")
         row = {"schema_version": 1, "run_id": self.run_id, "sequence": sequence,
                "frame_id": frame_id, "stamp": stamp, "image": name,
-               "confidence_kind": "calibrated_reference_match_score_not_probability",
+               "confidence_kind": "evidence_fused_reference_match_score_not_probability",
                "detections": detections}
         line = json.dumps(row, ensure_ascii=False, allow_nan=False)
         with io.open(self.path, "a", encoding="utf-8") as stream:

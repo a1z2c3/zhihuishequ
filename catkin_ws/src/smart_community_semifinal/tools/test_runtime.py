@@ -15,7 +15,7 @@ from traffic_detector_core import detect_signal
 from scene_geometry import (body_violation,physical_obstacles,camera_from_urdf,
                             visible_card)
 from semifinal_core import (StreetLedger,EvidenceWriter,front_clearance,body_over_stop_line,scan_clearance,
-                            integrate_twist_pose)
+                            integrate_twist_pose,temporal_confidence)
 from runtime_compat import monotonic,isfinite
 
 
@@ -28,6 +28,15 @@ def send(policy,state,t):policy.signal({'light_id':'light_1','state':state,'conf
 
 
 class RuntimeContracts(unittest.TestCase):
+    def test_temporal_confidence_rejects_one_blurred_frame(self):
+        median,fused,window=temporal_confidence([.78,.82,.80],.31)
+        self.assertAlmostEqual(median,.79,places=6)
+        self.assertGreater(fused,.31)
+        self.assertEqual(len(window),4)
+        median2,fused2,window2=temporal_confidence(window,.84)
+        self.assertGreater(fused2,fused)
+        self.assertLessEqual(len(window2),5)
+
     def test_red_body_overlap_requires_rear_to_clear_stop_line(self):
         line=stop()
         self.assertFalse(body_over_stop_line((2.78,3.9,math.pi),line['point'],line['direction']))

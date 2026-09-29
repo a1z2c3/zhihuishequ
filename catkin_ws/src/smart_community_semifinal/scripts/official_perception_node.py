@@ -8,7 +8,7 @@ import rospy,tf
 from sensor_msgs.msg import Image,CameraInfo
 from std_msgs.msg import String
 from reference_detector import ReferenceDetector,imwrite
-from semifinal_core import EvidenceWriter,StreetLedger
+from semifinal_core import EvidenceWriter,StreetLedger,temporal_confidence
 from image_geometry import decode_image,planar_position
 from runtime_compat import ros_text,isfinite
 import reference_detector
@@ -31,6 +31,14 @@ class Node(object):
         # explicit quality signal and never gets silently replaced by the
         # reference label.
         self.plate_reference_frames={};self.plate_ocr_votes={};self.plate_results={};self.last_stamp=None
+        # Per-instance evidence history.  This is a real temporal fusion
+        # channel: a single weak frame cannot dominate the confidence shown
+        # for an object that has been matched consistently over several
+        # timestamps.  Each entry is (last_frame_index, recent_values) so a
+        # long absence can discard a stale score instead of vouching for a
+        # fresh match with an old one.
+        self.confidence_history={}
+        self.frame_counter=0
         self.last_received_stamp=None;self.last_processed_stamp=None
         self.context_started_wall=time.time();self.last_status_wall=0.
         self.images=rospy.Publisher('/semifinal/annotated',Image,queue_size=1)
@@ -118,6 +126,50 @@ class Node(object):
             counts=votes.setdefault(label,{}).setdefault(slot,{})
             counts[char]=counts.get(char,0)+1
         return self._ocr_consensus(label)
+
+    # A gap this long means the instance was not accepted for several frames,
+    # so its history no longer describes the current observation.
+    CONFIDENCE_MAX_GAP=2
+
+    def _fuse_confidence(self,detection):
+        """Fuse recent same-instance matches for display/evidence only.
+
+        Commit decisions have already passed the hard gates before this runs;
+        this method never admits or removes a detection.  A median over the
+        last five observations rejects one blurred frame, and the fused value
+        stays a weighted mean so a sustained degradation still shows up.
+
+        This channel is cosmetic, so it must never be able to fail a frame:
+        every failure path returns without touching the detection.  The
+        observation transaction rolls back on exception, and the handshake
+        budget is only five frames per view.
+        """
+        if detection.get('commit_state') not in ('committed',
+                                                  'committed_reference_match'):
+            return
+        key=(detection.get('category'),detection.get('label'),
+             detection.get('instance_id',detection.get('commit_key')))
+        value=detection.get('confidence',0.)
+        try:
+            value=float(value)
+            if not isfinite(value) or not 0.<=value<=1.:
+                return
+            record=self.confidence_history.get(key)
+            if record is None:
+                history=[]
+            else:
+                history=record[1]
+            frames_since=1 if record is None else self.frame_counter-record[0]
+            median,fused,retained=temporal_confidence(
+                history,value,window=5,frames_since=frames_since,
+                max_gap=self.CONFIDENCE_MAX_GAP)
+        except (TypeError,ValueError,KeyError):
+            return
+        self.confidence_history[key]=(self.frame_counter,retained)
+        detection['frame_confidence']=round(value,4)
+        detection['temporal_confidence']=round(median,4)
+        detection['confidence_window']=len(retained)
+        detection['confidence']=round(fused,4)
 
     @staticmethod
     def _stable_count(context,committed,plate_frames,instance_frames,
@@ -305,6 +357,7 @@ class Node(object):
                     if context.get('context_id')!=self.context_id:
                         raise ValueError('context switched')
                     self.last_processed_stamp=stamp
+                    self.frame_counter+=1
                     self.detected_labels.update(d['label'] for d in detections)
                     committed=[];reasons=[]
                     for detection in detections:
@@ -312,6 +365,8 @@ class Node(object):
                             committed.append(detection)
                         elif detection.get('rejection_reason'):
                             reasons.append(detection['rejection_reason'])
+                    for detection in detections:
+                        self._fuse_confidence(detection)
                 # Completion requires temporal stability of the *reference*
                 # identity and a current matching commit.  Character OCR is
                 # reported separately: a transient OCR rejection must not

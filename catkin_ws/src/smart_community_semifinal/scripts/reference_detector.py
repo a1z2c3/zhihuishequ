@@ -22,6 +22,12 @@ import numpy as np
 # the offline tests can import this module.
 REJECTIONS = []
 
+# Lowe ratio-test and absolute-distance caps for the descriptor match set.
+# They are module constants so the offline regression test can state the
+# expected match quality in one place.
+MATCH_MAX_DISTANCE = 60
+MATCH_MAX_RATIO = 0.72
+
 
 def drain_rejections():
     drained = list(REJECTIONS)
@@ -52,8 +58,44 @@ class ReferenceDetector(object):
         self.manifest_path = text_type(manifest_path)
         with io.open(self.manifest_path, encoding="utf-8") as stream:
             self.manifest = json.load(stream)
+        # ORB configuration.  This is the configuration the passing lap used,
+        # and every tempting "improvement" measured worse on real VM evidence
+        # frames:
+        #   * scaleFactor 1.15 -> 1.10 (a "finer" pyramid) NARROWS the covered
+        #     scale range from 1.15^11 = 4.65x to 1.10^11 = 2.85x.  The
+        #     standees are small (0.15 m) while the references are normalised
+        #     to 480 px, so the observed scale ratio is roughly 2.4-4.8x and
+        #     the narrower pyramid simply has no level to match against: total
+        #     inliers fell 27.7% and a frame with 75 inliers dropped to zero.
+        #     Adding pyramid detail without losing range means raising nlevels,
+        #     which costs time we do not have.
+        #   * CLAHE on the frame: its 8x8 tile grid covers 160x120 px on a
+        #     1280x960 frame but only 60x19 px on a 480 px reference, so the
+        #     local normalisation is not scale consistent between the two sides
+        #     and descriptor matches collapse.
+        #   * nfeatures 2200 -> 3000 is the one lever that genuinely helps (the
+        #     number of ground-truth labels reaching the ledger's three-frame
+        #     quorum rises from 11 to 16, with nothing lost) but it costs 58%
+        #     more time per frame (0.510 s against 0.323 s on this host).  The
+        #     perception node runs at rospy.Rate(3) and the teaching VM already
+        #     sits near 2.5 Hz, i.e. exactly the five frames per 2.0 s that the
+        #     observation window produces against a three-complete-frame
+        #     quorum.  A 58% slowdown would leave about two complete frames and
+        #     turn every observation into observation_timeout.  Raise this only
+        #     after `latency_wall_seconds` in /semifinal/frame_status shows
+        #     headroom below the 1/3 s budget on the VM.
         self.orb = cv2.ORB_create(nfeatures=2200, scaleFactor=1.15, nlevels=12,
                                  edgeThreshold=8, fastThreshold=7)
+        # Descriptor matching is the dominant drag on the published score: the
+        # inlier ratio is the channel with the most headroom, because a loose
+        # match set lets geometric outliers in and RANSAC then rejects them.
+        # Both thresholds are instance state so they can be swept and pinned
+        # by the offline regression test instead of being magic numbers.
+        # Tightening them does raise the score, but only by discarding the
+        # hardest real detections (missed ground-truth labels rose from 56 to
+        # 61 of 109), which is score inflation rather than better matching.
+        self.match_distance = MATCH_MAX_DISTANCE
+        self.match_ratio = MATCH_MAX_RATIO
         self.min_inliers, self.min_ratio = min_inliers, min_ratio
         self.references = []
         plate_templates=[]
@@ -72,6 +114,22 @@ class ReferenceDetector(object):
             gray = cv2.resize(gray, None, fx=scale, fy=scale)
             kp, desc = self.orb.detectAndCompute(gray, None)
             self.references.append((item, gray, kp, desc))
+        # Matching structure: one scene-side LSH index per frame, queried once
+        # per reference.  Two alternatives were measured on 45 real VM evidence
+        # frames using that run's own event log as ground truth, and both were
+        # rejected:
+        #   * a single combined index over every reference scores higher per
+        #     frame (median 0.966 against 0.839) but LOST resident_13 entirely
+        #     on street_b_east_side (5 frames -> 0): it introduced a new missed
+        #     person, the one failure mode this project has spent several
+        #     rounds removing.
+        #   * FLANN/LSH builds its hash tables from the global OpenCV RNG, so a
+        #     combined index returned different detections for the same frame
+        #     in different processes.  Brute force is deterministic but its
+        #     exact ratio test is stricter and costs more recall than the extra
+        #     features buy back.
+        # The per-reference structure is stable across processes (same label
+        # set, inlier counts within +/-2 from RANSAC sampling).
         from plate_ocr import PlateCharacterRecognizer
         self.plate_ocr=PlateCharacterRecognizer(plate_templates)
 
@@ -84,10 +142,9 @@ class ReferenceDetector(object):
         The old display score multiplied four partially correlated terms.  A
         correct, oblique standee with 10-15 well-distributed inliers could
         therefore be rendered as 0.2-0.4 despite a strong photometric match.
-        This is a monotonic calibration of an already accepted reference match:
-        raw_score is retained for diagnostics, while the calibrated score uses
-        a weighted evidence mean and a 0.50 baseline earned by the existing
-        homography/photometric gates.  It is a score, not a probability.
+        This is a monotonic fusion of an already accepted reference match:
+        raw_score is retained for diagnostics, while the published score uses
+        a weighted evidence mean. It is a score, not a probability.
         """
         clamp=lambda value:max(0.,min(1.,float(value)))
         ratio=clamp(ratio);inlier_factor=clamp(inlier_factor)
@@ -99,14 +156,9 @@ class ReferenceDetector(object):
         # spread 与 photo 是辅助判据，各占 0.20。四项均为单调不减，
         # 因此 evidence 对任何一项的改善都单调递增，不会出现"某项变好总分反降"。
         evidence=(.35*ratio+.25*inlier_factor+.20*spread_factor+.20*photo)
-        # 0.50 是"已通过全部硬闸门"的基线，不是概率：检测走到这里必须已经
-        # 满足 ORB 内点 >=10、内点比例 >=0.40、光度相关 >=0.50。把基线写进
-        # 分数的代价是区间被压到 [0.50,1.00]，所以 raw_matching_score 一并
-        # 保留在证据里，需要看未校准的原始乘积时以它为准。
-        calibrated=.50+.50*clamp(evidence)
         # Plates keep their stricter raw score unless the independent evidence
         # supports a higher value; OCR remains a separate quality channel.
-        return round(max(clamp(raw_score), calibrated), 4)
+        return round(max(clamp(raw_score), clamp(evidence)), 4)
 
     def detect(self, frame, categories=None):
         allowed=set(categories) if categories else None
@@ -114,8 +166,9 @@ class ReferenceDetector(object):
         kp, desc = self.orb.detectAndCompute(gray, None)
         if desc is None or len(kp) < self.min_inliers:
             return []
-        # Build the scene's binary-descriptor index once per frame. Brute-force
-        # matching every reference was measured at >1 s/frame on this host.
+        # Query the scene against each reference in turn, reusing the one scene
+        # index built above.  Brute-force matching every reference was measured
+        # at >1 s/frame on this host.
         matcher = cv2.FlannBasedMatcher(dict(algorithm=6, table_number=6,
                                             key_size=12, multi_probe_level=1), dict(checks=32))
         matcher.add([desc]); matcher.train()
@@ -126,8 +179,9 @@ class ReferenceDetector(object):
             if ref_desc is None:
                 continue
             pairs = matcher.knnMatch(ref_desc, k=2)
-            good = [p[0] for p in pairs if len(p) == 2 and p[0].distance < 60
-                    and p[0].distance < 0.72*p[1].distance]
+            good = [p[0] for p in pairs if len(p) == 2
+                    and p[0].distance < self.match_distance
+                    and p[0].distance < self.match_ratio*p[1].distance]
             if len(good) < self.min_inliers:
                 continue
             # One observed feature must not vote multiple times for a template.
