@@ -1,0 +1,90 @@
+Panels:
+  - Class: rviz/Displays
+    Name: Displays
+    Tree Height: 620
+  - Class: rviz/Views
+    Name: Views
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz/Grid
+      Enabled: true
+      Name: Grid
+      Color: 120; 120; 125
+      Plane Cell Count: 21
+      Line Style:
+        Line Width: 0.02
+        Value: Lines
+    - Class: rviz/Map
+      Enabled: true
+      Name: Map
+      Topic: /map
+      Color Scheme: map
+      Alpha: 0.8
+      Draw Behind: true
+      Use Timestamp: false
+    - Class: rviz/LaserScan
+      Enabled: true
+      Name: LaserScan
+      Topic: /scan
+      Style: Points
+      Size (m): 0.025
+      Color: 255; 80; 80
+      Color Transformer: FlatColor
+    - Class: rviz/RobotModel
+      Enabled: true
+      Name: RobotModel
+      Robot Description: robot_description
+      Visual Enabled: true
+      Collision Enabled: false
+    - Class: rviz/TF
+      Enabled: true
+      Name: TF
+      Show Names: false
+      Show Axes: true
+      Show Arrows: true
+      Marker Scale: 0.4
+      Frame Timeout: 15
+    - Class: rviz/Image
+      Enabled: true
+      Name: CameraRaw
+      Image Topic: /camera/color/image_raw
+      Max Rate (FPS): 8
+      Transport Hint: raw
+      Normalize Range: true
+    - Class: rviz/Image
+      Enabled: true
+      Name: Annotated
+      Image Topic: /semifinal/annotated
+      Max Rate (FPS): 8
+      Transport Hint: raw
+      Normalize Range: true
+  Global Options:
+    Background Color: 40; 40; 42
+    Fixed Frame: map
+    Frame Rate: 20
+  Name: root
+  Tools:
+    - Class: rviz/MoveCamera
+    - Class: rviz/Select
+    - Class: rviz/FocusCamera
+    - Class: rviz/Measure
+  Value: true
+  Views:
+    Current:
+      Class: rviz/Orbit
+      Name: Current View
+      Distance: 9
+      Focal Point:
+        X: 2.1
+        Y: 2.1
+        Z: 0
+      Pitch: 1.5707
+      Yaw: 0
+      Target Frame: <Fixed Frame>
+    Saved: ~
+Window Geometry:
+  Height: 960
+  Width: 1280
+  Hide Left Dock: false
+  Hide Right Dock: true
