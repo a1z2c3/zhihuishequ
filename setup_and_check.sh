@@ -15,6 +15,7 @@ python catkin_ws/src/smart_community_semifinal/tools/test_perception_contracts.p
 python catkin_ws/src/smart_community_semifinal/tools/test_obstacle_closed_loop.py
 python catkin_ws/src/smart_community_semifinal/tools/test_plan_route.py
 python catkin_ws/src/smart_community_semifinal/tools/test_navigation_contracts.py
+python catkin_ws/src/smart_community_semifinal/tools/test_reference_matching_regression.py
 python catkin_ws/src/smart_community_semifinal/tools/build_navigation_map.py \
   --layout catkin_ws/src/smart_community_semifinal/config/layout.json \
   --map-yaml catkin_ws/src/smart_community_semifinal/maps/slam_map.yaml \
