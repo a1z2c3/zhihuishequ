@@ -1,13 +1,13 @@
 {
   "schema_version": 2,
   "signal_cycle": {
-    "period_s": 28.0,
+    "period_s": 30.0,
     "red_s": 10.0,
     "green_s": 15.0,
-    "yellow_s": 3.0,
+    "yellow_s": 5.0,
     "light_2_offset_s": 7.0,
     "offsets_s": {
-      "light_1": 14.0,
+      "light_1": 16.0,
       "light_2": 7.0
     }
   },
@@ -40,7 +40,7 @@
     ],
     [
       0.3,
-      3.2
+      3.4
     ],
     [
       0.3,
@@ -227,7 +227,7 @@
       "name": "street_a_west",
       "xy": [
         0.3,
-        3.2
+        3.4
       ],
       "yaw": 0,
       "street": "A",
@@ -355,7 +355,7 @@
       "yaw": 0,
       "observe": true,
       "expected_category": "plate",
-      "expected_label": "鄂D7B5Q2"
+      "expected_label": "苏DB812A"
     },
     {
       "name": "parking_3",
@@ -370,7 +370,7 @@
       "yaw": 0,
       "observe": true,
       "expected_category": "plate",
-      "expected_label": "苏APL12A"
+      "expected_label": "鄂DP8522"
     },
     {
       "name": "right_top",
@@ -436,7 +436,8 @@
     "60 cm labels override pixel-derived distances.",
     "Person artwork assignment and exact placements are illustrative, not specified by the diagram.",
     "A arrows permit north/south/west; B arrows permit north/east. Card fronts and observation poses cover every permitted direction.",
-    "Light dimensions 0.64 x 0.14 m and overall 0.48 m are official; mounting locations are reconstructed."
+    "Light dimensions 0.64 x 0.14 m and overall 0.48 m are official; mounting locations are reconstructed.",
+    "The dimensioned light photo gives a horizontal 0.64 x 0.14 m housing with its bottom edge at 0.34 m and its top edge at 0.48 m; both signals are modelled in that attitude. The plan diagram draws the north signal as a vertical stack, but a 0.64 m tall housing could not satisfy the official 0.34/0.48 m heights, and at the 2.44 m stop line a lamp raised to z=0.63 m would leave the camera's vertical field of view (limit z=0.50 m at 0.64 m range). Horizontal mounting is therefore the choice that keeps every lamp observable."
   ],
   "planner": {
     "algorithm": "A*",
@@ -515,7 +516,7 @@
         "segment": 4,
         "from": "top_left",
         "to": "street_a_west",
-        "grid_cells": 36,
+        "grid_cells": 26,
         "simplified_cells": 2,
         "inserted": 0,
         "start_cell": [
@@ -524,19 +525,19 @@
         ],
         "goal_cell": [
           65,
-          77
+          67
         ]
       },
       {
         "segment": 5,
         "from": "street_a_west",
         "to": "left_bottom",
-        "grid_cells": 29,
+        "grid_cells": 39,
         "simplified_cells": 2,
         "inserted": 0,
         "start_cell": [
           65,
-          77
+          67
         ],
         "goal_cell": [
           65,
