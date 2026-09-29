@@ -277,24 +277,9 @@ def main():
         {"name":"past_light_1","xy":[1.45,3.90],"yaw":180},
         {"name":"street_a_north","xy":[0.90,3.90],"yaw":-90,"street":"A","observe":True,"expected_category":"person"},
         {"name":"top_left","xy":[0.30,3.90],"yaw":180},
-        # Offset the west observation NORTH to y = 3.40.  The A island holds
-        # two card rows, y = 3.18 (resident_1/7 north-facing, resident_3
-        # west-facing) and y = 3.40 (visitor_F1/resident_10/resident_16
-        # north-facing, resident_5 west-facing).  A pose on the y = 3.18 row
-        # sees resident_1 and resident_7 EDGE-ON directly in front of
-        # resident_3: at y = 3.20 resident_3 kept only 86% of its width, its
-        # photometric correlation fell to ~0.53 against the 0.50 accept bound
-        # (0.03 of margin, which is why it was historically dropped by the
-        # three-frame ledger quorum), and resident_4 was left at 40 degrees
-        # off its own normal.
-        # y = 3.40 is optimal: it sits ON the upper row, but that row's cards
-        # face +/-y, so from the same y they are edge-on (apparent width ~0)
-        # and occlude nothing.  Projected result: resident_3 100% visible at
-        # 17.6 degrees off its normal, resident_4 front-cosine 0.756 -> 0.911,
-        # resident_5 0.979 -> 1.000.  A 0.10 m offset was tried in an earlier
-        # round and was not enough; re-derive with a projection check that
-        # uses apparent width = 0.05 * |front_cosine| before moving this again.
-        {"name":"street_a_west","xy":[0.30,3.40],"yaw":0,"street":"A","observe":True,"expected_category":"person"},
+        # Offset the west observation by 10 cm so the two west-facing cards
+        # in the A row are not collinear in the camera projection.
+        {"name":"street_a_west","xy":[0.30,3.20],"yaw":0,"street":"A","observe":True,"expected_category":"person"},
         {"name":"left_bottom","xy":[0.30,2.63],"yaw":-90},
         {"name":"street_b_west","xy":[0.96,2.63],"yaw":-90,"street":"B","observe":True,"expected_category":"person"},
         {"name":"street_a_south","xy":[1.36,2.63],"yaw":90,"street":"A","observe":True,"expected_category":"person"},
