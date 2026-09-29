@@ -164,7 +164,18 @@ class ReferenceDetector(object):
                     ocr={'text':'???????','characters':[], 'confidence':0.,
                          'complete':False,'error':type(exc).__name__}
             x,y,bw,bh = cv2.boundingRect(quad)
-            score = float(min(1, ratio)*min(1, n_inliers/24.0)*min(1, spread/0.10))
+            # 匹配质量分 = 三项乘积，每项截到 1。三者相乘意味着任何一项不满
+            # 都会明显拉低总分，这是有意的保守估计。
+            #   内点比例 ratio        —— 匹配干不干净
+            #   内点数量 / SATURATION —— 证据够不够多
+            #   凸包覆盖 / SPREAD_MIN —— 内点是否铺开（防"一小块凑很多点"）
+            # SATURATION 取 16：硬闸门是 min_inliers=10，16 约为其 1.6 倍，
+            # 表示"匹配质量充分"。原先写死 24（=闸门 2.4 倍）没有任何依据，
+            # 会把内点 11 的检测压到 0.458，而实测内点中位数是 94——绝大多数
+            # 检测本来就饱和，只有最差的一小撮被它扣分。
+            inlier_factor = min(1, n_inliers/16.0)
+            spread_factor = min(1, spread/0.10)
+            score = float(min(1, ratio)*inlier_factor*spread_factor)
             # The homography is fitted to the printed artwork, which may be
             # letterboxed inside the regulated physical board.  Use the
             # artwork dimensions for PnP while retaining board dimensions in
@@ -180,6 +191,10 @@ class ReferenceDetector(object):
                                     (source[indices,1]/(h-1)-.5)*metric_height,np.zeros(len(indices))))
             output.append({"label": item["label"], "category": item["category"],
                            "confidence": round(score, 4), "bbox": [x,y,bw,bh],
+                           # 三个因子分开导出，便于定位低分到底卡在哪一项
+                           "score_factors": {"ratio": round(float(ratio), 4),
+                                             "inliers": round(inlier_factor, 4),
+                                             "spread": round(spread_factor, 4)},
                            "quad": quad.round(2).tolist(), "inliers": n_inliers,
                            "width_m":metric_width,"height_m":metric_height,
                            "board_width_m":item["width_m"],"board_height_m":item["height_m"],
