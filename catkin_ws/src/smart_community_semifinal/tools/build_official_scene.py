@@ -432,7 +432,19 @@ def main():
         parts.append('<visual name="box"><pose>0 0 .41 0 0 0</pose><geometry><box><size>.64 .05 .14</size></box></geometry><material><ambient>.02 .02 .02 1</ambient><diffuse>.02 .02 .02 1</diffuse></material></visual>')
         for colour,lx,rgb in [("red",-.22,"1 0 0 1"),("yellow",0,"1 .7 0 1"),("green",.22,"0 1 0 1")]:
             parts.append('<visual name="%s"><pose>%f -.025 .41 1.570796 0 0</pose><geometry><cylinder><radius>.052</radius><length>.012</length></cylinder></geometry><material><ambient>%s</ambient><diffuse>%s</diffuse></material></visual>'%(colour,lx,rgb,rgb))
-        for lx in [-.29,.29]:
+        # Legs sit at the ends of the .64 m housing.  The offset is set by the
+        # guard's lateral sensitivity, not by looks: scan_clearance treats
+        # |lateral| <= body_half_width + SIDE_SAFETY = 0.2735 m as its side
+        # corridor, and light_2 stands on the x = 1.95 lane centreline while
+        # light_1 straddles the y = 3.90 one.  At +/-0.29 the leg centre is
+        # 0.29 from the lane centre, so its inner face at 0.2775 sits only
+        # 4 mm inside that corridor and 2.6% of every legal lane pose (133 of
+        # 5037, all of them this pair of legs) reads a phantom forward
+        # obstacle -- a false avoid that can stall a lap.  At +/-0.32 the inner
+        # face clears the corridor by 34 mm, which is the whole point of the
+        # 3 cm.  Do not reduce it again; verify with
+        # output/_audit22/leg_false_trigger.py.
+        for lx in [-.32,.32]:
             parts.append('<visual name="leg_%s"><pose>%f 0 .17 0 0 0</pose><geometry><box><size>.025 .025 .34</size></box></geometry></visual><collision name="leg_%s"><pose>%f 0 .17 0 0 0</pose><geometry><box><size>.025 .025 .34</size></box></geometry></collision>'%(lx,lx,lx,lx))
         offset = float(SIGNAL_CYCLE["offsets_s"][name])
         parts.append('</link><plugin name="signal_cycle" filename="libsemifinal_signal.so"><offset>%s</offset><period>%s</period><red>%s</red><green>%s</green></plugin></model>' % (offset, SIGNAL_CYCLE["period_s"], SIGNAL_CYCLE["red_s"], SIGNAL_CYCLE["green_s"]));world.extend(parts)
