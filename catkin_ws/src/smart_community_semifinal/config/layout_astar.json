@@ -40,7 +40,7 @@
     ],
     [
       0.3,
-      3.2
+      3.07
     ],
     [
       0.3,
@@ -227,7 +227,7 @@
       "name": "street_a_west",
       "xy": [
         0.3,
-        3.2
+        3.07
       ],
       "yaw": 0,
       "street": "A",
@@ -516,7 +516,7 @@
         "segment": 4,
         "from": "top_left",
         "to": "street_a_west",
-        "grid_cells": 36,
+        "grid_cells": 42,
         "simplified_cells": 2,
         "inserted": 0,
         "start_cell": [
@@ -525,19 +525,19 @@
         ],
         "goal_cell": [
           65,
-          77
+          83
         ]
       },
       {
         "segment": 5,
         "from": "street_a_west",
         "to": "left_bottom",
-        "grid_cells": 29,
+        "grid_cells": 23,
         "simplified_cells": 2,
         "inserted": 0,
         "start_cell": [
           65,
-          77
+          83
         ],
         "goal_cell": [
           65,
