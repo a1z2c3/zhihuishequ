@@ -20,7 +20,21 @@ class PlateCharacterRecognizer(object):
     # keep the normal margin gate, but use the empirically bounded floor .52.
     # Leave-one-plate-out remains below this floor (.509), so an unseen glyph
     # is still rejected instead of being promoted by the relaxed score alone.
-    SCORE_THRESHOLDS=(.86,.78,.85,.60,.52,.85,.65)
+    # Slot 1's floor is bounded from BELOW by the leave-one-plate-out score,
+    # which is the highest a character absent from the templates can reach:
+    # 0.6895 for this slot (measured, tools/test_plate_ocr.py).  Any floor at
+    # or below that accepts a wrong character -- 0.60 was tried and the
+    # held-out plate's D was read as an A, failing that regression test.
+    # It is bounded from ABOVE by what the LIVE rectified crop actually
+    # scores.  The VM camera blurs the plate, so slot 1 reads 0.7679-0.7681
+    # live against 0.9226 on the fixture artwork -- a 0.15 drop that the old
+    # 0.78 floor did not allow for, which is why the two randomly generated
+    # plates abstained on their city letter while the official plate (0.99)
+    # passed.  Reproduce offline by warping the evidence frame through the
+    # recorded plate quad.
+    # 0.74 sits inside the measured window (0.6895, 0.7679): +0.050 above the
+    # wrong-character ceiling and +0.028 below the live correct value.
+    SCORE_THRESHOLDS=(.86,.74,.85,.60,.52,.85,.65)
     MARGIN_THRESHOLD=.04
     # Province, city letter, then the five characters following the separator.
     SLOTS=[(.01,.145),(.145,.285),(.335,.46),(.46,.59),(.59,.72),(.72,.85),(.85,.99)]
