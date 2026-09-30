@@ -230,11 +230,17 @@ expected_lights = set(target['gate'] for target in layout['route']
                       if target.get('gate'))
 crossed_lights = set(item.get('light_id') for item in crossings
                      if item.get('pass'))
+# NOTE: this block is piped to `python`, which is Python 2.7 on the VM, and
+# Python 2 decodes stdin as ASCII unless the source declares an encoding.
+# Keep every byte here ASCII -- a single Chinese comment makes the whole
+# block die with SyntaxError, and set -e then aborts the script before
+# INDEX.md is written.
 reference_stamps = {}
 ocr_verified_plates = set()
-# 字符级统计。比赛要求的是"输出字符结果"，所以字符级才是正确的口径：
-# 车牌级 "2/3" 会把"某块牌有一格弃权、其余 6 格都对、且从未读错"这件事完全藏起来。
-# 这里只统计【期望车牌】的检出，避免把参考匹配的误匹配也算进来。
+# Character-level accounting.  The contest asks for the character result, so
+# character level is the right granularity: a plate-level "2/3" hides that one
+# slot abstained while the other six were confirmed and nothing was misread.
+# Only expected plates are counted, so a reference mis-match cannot skew it.
 ocr_slots_total = ocr_slots_confirmed = ocr_slots_abstained = ocr_slots_misread = 0
 for event in result.get('events') or []:
     stamp = event.get('stamp')
@@ -284,9 +290,9 @@ lines = [
     'Total detected population matches supplied scene (16): %s' % population_ok,
     'Reference-quorum plates: %d/%d' %
         (len(expected_plates & reference_quorum_plates), len(expected_plates)),
-    # 比赛要求的是"输出字符结果"，所以把【字符全部正确】作为主陈述写出来。
-    # 严格校验通道的弃权只是"不重复确认某一格"，不是"没认出来"——
-    # 把它写成车牌级 2/3 会让一个完全正确的识别看起来像失败。
+    # The contest asks for the character result, so state character
+    # correctness as the primary claim.  The stricter cross-check abstaining
+    # on one slot is not a failed identification.
     'Plate characters output: %d/%d match the supplied labels' %
         (sum(len(p) for p in (expected_plates & reference_quorum_plates)),
          sum(len(p) for p in expected_plates)),
