@@ -232,6 +232,10 @@ crossed_lights = set(item.get('light_id') for item in crossings
                      if item.get('pass'))
 reference_stamps = {}
 ocr_verified_plates = set()
+# 字符级统计。比赛要求的是"输出字符结果"，所以字符级才是正确的口径：
+# 车牌级 "2/3" 会把"某块牌有一格弃权、其余 6 格都对、且从未读错"这件事完全藏起来。
+# 这里只统计【期望车牌】的检出，避免把参考匹配的误匹配也算进来。
+ocr_slots_total = ocr_slots_confirmed = ocr_slots_abstained = ocr_slots_misread = 0
 for event in result.get('events') or []:
     stamp = event.get('stamp')
     for detection in event.get('detections') or []:
@@ -244,6 +248,16 @@ for event in result.get('events') or []:
             reference_stamps.setdefault(label, set()).add(stamp)
         if detection.get('ocr_status') == 'recognized_and_verified':
             ocr_verified_plates.add(label)
+        characters = (detection.get('ocr_result') or {}).get('characters') or []
+        if label in expected_plates and len(characters) == len(label):
+            for index, character in enumerate(characters):
+                ocr_slots_total += 1
+                if not character.get('accepted'):
+                    ocr_slots_abstained += 1
+                elif character.get('value') == label[index]:
+                    ocr_slots_confirmed += 1
+                else:
+                    ocr_slots_misread += 1
 reference_quorum_plates = set(label for label, stamps in reference_stamps.items()
                              if len(stamps) >= 3)
 plates_ok = expected_plates <= reference_quorum_plates
@@ -270,8 +284,10 @@ lines = [
     'Total detected population matches supplied scene (16): %s' % population_ok,
     'Reference-quorum plates: %d/%d' %
         (len(expected_plates & reference_quorum_plates), len(expected_plates)),
-    'OCR-verified plates (independent quality channel): %d/%d' %
-        (len(expected_plates & ocr_verified_plates), len(expected_plates)),
+    'OCR cross-check (independent, stricter channel): %d misread in %d character '
+    'slots (%d confirmed, %d abstained; %d/%d plates fully confirmed)' %
+        (ocr_slots_misread, ocr_slots_total, ocr_slots_confirmed, ocr_slots_abstained,
+         len(expected_plates & ocr_verified_plates), len(expected_plates)),
     'Camera samples: %d' % len(result.get('camera_samples') or []), '',
     'SLAM map snapshot: %s' % ('saved' if os.path.isfile(os.path.join(folder,'slam_map.pgm'))
                                  else 'not saved'),
