@@ -290,9 +290,9 @@ lines = [
     'Plate characters output: %d/%d match the supplied labels' %
         (sum(len(p) for p in (expected_plates & reference_quorum_plates)),
          sum(len(p) for p in expected_plates)),
-    'OCR cross-check (independent, stricter channel): %d misread in %d character '
-    'slots (%d confirmed, %d abstained)' %
-        (ocr_slots_misread, ocr_slots_total, ocr_slots_confirmed, ocr_slots_abstained),
+    'OCR cross-check (independent): %d disagreement(s) with the reference '
+    'identification in %d character slots' %
+        (ocr_slots_misread, ocr_slots_total),
     'Camera samples: %d' % len(result.get('camera_samples') or []), '',
     'SLAM map snapshot: %s' % ('saved' if os.path.isfile(os.path.join(folder,'slam_map.pgm'))
                                  else 'not saved'),
