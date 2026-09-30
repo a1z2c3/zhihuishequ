@@ -279,7 +279,7 @@ def main():
         {"name":"top_left","xy":[0.30,3.90],"yaw":180},
         # Offset the west observation by 10 cm so the two west-facing cards
         # in the A row are not collinear in the camera projection.
-        {"name":"street_a_west","xy":[0.30,3.20],"yaw":0,"street":"A","observe":True,"expected_category":"person"},
+        {"name":"street_a_west","xy":[0.30,3.07],"yaw":0,"street":"A","observe":True,"expected_category":"person"},
         {"name":"left_bottom","xy":[0.30,2.63],"yaw":-90},
         {"name":"street_b_west","xy":[0.96,2.63],"yaw":-90,"street":"B","observe":True,"expected_category":"person"},
         {"name":"street_a_south","xy":[1.36,2.63],"yaw":90,"street":"A","observe":True,"expected_category":"person"},
