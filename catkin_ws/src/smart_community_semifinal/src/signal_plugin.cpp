@@ -7,8 +7,6 @@
 #include <functional>
 
 namespace gazebo {
-// Only changes rendered signal lamps. No ROS truth topic is exposed to control.
-// Durations are simulation parameters; the new semifinal TXT does not fix them.
 class SemifinalSignal : public ModelPlugin {
  public:
   void Load(physics::ModelPtr model, sdf::ElementPtr sdf) override {
@@ -17,10 +15,6 @@ class SemifinalSignal : public ModelPlugin {
     period_ = sdf->HasElement("period") ? sdf->Get<double>("period") : 30.0;
     red_ = sdf->HasElement("red") ? sdf->Get<double>("red") : 10.0;
     green_ = sdf->HasElement("green") ? sdf->Get<double>("green") : 15.0;
-    // A malformed world must not create a negative fmod period or a phase
-    // with no yellow interval.  Keep the documented 30 s / 10 s / 15 s cycle
-    // (which leaves a 5 s yellow) as the fallback so a missing parameter can
-    // never silently shorten the yellow below what the contest asks for.
     if (!std::isfinite(period_) || period_ <= 0.0) period_ = 30.0;
     if (!std::isfinite(red_) || red_ < 0.0) red_ = 10.0;
     if (!std::isfinite(green_) || green_ < 0.0) green_ = 15.0;
@@ -46,8 +40,6 @@ class SemifinalSignal : public ModelPlugin {
     const ignition::math::Color colours[] = {{1,0.01f,0.01f,1}, {1,0.65f,0.01f,1}, {0.01f,1,0.02f,1}};
     for (int i=0; i<3; ++i) {
       const std::string parent = model_->GetScopedName() + "::housing";
-      // Preserve Gazebo's real visual id/type rather than creating an incomplete
-      // replacement message. Sensor-render scenes resolve material updates by id.
       msgs::Visual message = model_->GetLink("housing")->GetVisualMessage(parent + "::" + names[i]);
       message.set_name(parent + "::" + names[i]);
       message.set_parent_name(parent);

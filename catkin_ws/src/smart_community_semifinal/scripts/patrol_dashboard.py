@@ -1,43 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""patrol_dashboard.py -- 巡检过程的实时状态面板（纯订阅，可选工具）。
-
-用途
-----
-把已经在发的话题汇总成一块**终端里实时刷新的面板**，方便：
-  * 演示视频里让评委一眼看到识别结果（对应"视觉识别与检测"这一项）；
-  * 现场盯盘时快速判断卡在哪一步。
-
-★ 它只订阅、不发布，也不被 patrol.launch 拉起。
-  所以：
-    - 它不可能影响导航/避障/识别，任何时刻都能安全打开或关掉；
-    - 跑成功率批次时**不要**开它（少一份 CPU 占用），
-      跑出来的证据与开不开面板无关。
-
-用法
-----
-    # 另开一个终端
-    source /opt/ros/melodic/setup.bash
-    source ~/smart_community_run6/catkin_ws/devel/setup.bash
-    rosrun smart_community_semifinal patrol_dashboard.py
-
-    # 同时把面板内容落盘，便于事后写报告
-    rosrun smart_community_semifinal patrol_dashboard.py --log /tmp/dash.log
-
-    # 不刷新屏幕，只打印（重定向到文件时用）
-    rosrun smart_community_semifinal patrol_dashboard.py --plain
-
-    # 不起仿真，用假数据自检面板渲染（部署后先跑这个确认字体/对齐正常）
-    rosrun smart_community_semifinal patrol_dashboard.py --self-test
-
-订阅的话题（都已在发，无需改任何节点）
-    /semifinal/task_status      phase / index / target
-    /semifinal/street_summary   A/B 街区人数
-    /semifinal/events           每次检测（label + 置信度）
-    /semifinal/plate_summary    车牌汇总
-    /semifinal/visual_signal    红绿灯状态
-    /semifinal/guard_status     避障与门状态
-"""
+"""只读的巡检终端状态面板。"""
 from __future__ import print_function
 
 import argparse
@@ -49,22 +12,17 @@ import time
 import rospy
 from std_msgs.msg import String
 
-# ---------------------------------------------------------------- 显示宽度
 WIDTH = 78
-# 最近识别的滚动行数
 RECENT_ROWS = 8
 
-# 街区块的显示名
 STREET_NAME = {'A': u'A 街区', 'B': u'B 街区'}
-# 分类显示名
 CATEGORY_NAME = {'resident': u'社区人员', 'visitor': u'非社区人员',
                  'plate': u'车牌', 'person': u'人偶'}
-# 灯状态显示
 STATE_NAME = {'red': u'红', 'green': u'绿', 'yellow': u'黄', 'unknown': u'?'}
 
 
 def _decode(text):
-    """std_msgs/String 在 py2 下可能是 str 也可能是 unicode。"""
+    """解码消息文本。"""
     if isinstance(text, bytes):
         try:
             return text.decode('utf-8')
@@ -74,12 +32,7 @@ def _decode(text):
 
 
 def _text(value):
-    """把任意值安全地转成文本。
-
-    ★ py2 陷阱：JSON 解出来的字符串是 unicode，而 py2 的 str(u'苏') 会尝试
-    按 ASCII 编码，直接抛 UnicodeEncodeError。所以这里绝不能用 str()，
-    要么原样返回 unicode，要么把 UTF-8 字节解码，数字/布尔才用 %s 格式化。
-    """
+    """安全转换为统一文本类型。"""
     if value is None:
         return u''
     if isinstance(value, type(u'')):
@@ -90,7 +43,7 @@ def _text(value):
 
 
 def _dwidth(text):
-    """终端里的显示宽度：CJK 与全角字符占 2 列。"""
+    """计算文本在终端中占用的列数。"""
     total = 0
     for ch in text:
         code = ord(ch)
@@ -105,7 +58,7 @@ def _dwidth(text):
 
 
 def _pad(text, width, align='left'):
-    """按显示宽度补空格，保证中英混排也对齐。"""
+    """按显示宽度补齐空格。"""
     text = text if isinstance(text, type(u'')) else _decode(text)
     gap = width - _dwidth(text)
     if gap <= 0:
@@ -128,12 +81,9 @@ class Dashboard(object):
         self.plates = {}
         self.signals = {}
         self.guard = {}
-        self.recent = []            # [(wall_clock, category, label, confidence)]
+        self.recent = []
         self.started = time.time()
         self.first_task = None
-        # 用来判断"一条消息都没收到"：面板起太早（roscore 还没起）或
-        # ROS_MASTER_URI 不一致时，订阅注册不上，界面会一直空着，
-        # 看上去像坏了。记下最后收信时刻，超时就明确提示。
         self.last_rx = None
         self.log = io.open(log_path, 'a', encoding='utf-8') if log_path else None
 
@@ -144,7 +94,6 @@ class Dashboard(object):
         rospy.Subscriber('/semifinal/visual_signal', String, self.on_signal)
         rospy.Subscriber('/semifinal/guard_status', String, self.on_guard)
 
-    # ------------------------------------------------------------ 回调
     def on_task(self, msg):
         self.last_rx = time.time()
         data = _load(msg)
@@ -199,7 +148,6 @@ class Dashboard(object):
         if len(self.recent) > RECENT_ROWS * 4:
             del self.recent[:-RECENT_ROWS * 4]
 
-    # ------------------------------------------------------------ 渲染
     def rule(self, char=u'─'):
         return char * WIDTH
 
@@ -217,7 +165,6 @@ class Dashboard(object):
             u'' if not error else u'   ★ ' + _text(error),
             time.strftime('%H:%M:%S')))
         out.append(self.rule(u'═'))
-        # 一条消息都没收到（或已静默）时明确说明，别让人以为面板坏了
         silent = (self.last_rx is None and elapsed > 5.0)
         if self.last_rx is not None and time.time() - self.last_rx > 15.0:
             silent = True
@@ -228,13 +175,11 @@ class Dashboard(object):
             out.append(u'   解法：等场景起来后再启动面板')
             out.append(self.rule())
 
-        # 航点 / 相位
         out.append(u' 航点   %s  phase=%s  target=%s' % (
             _pad(_text(index), 5), _pad(_text(phase), 10),
             _text(target)))
         out.append(u' 计时   %s' % self._hms(elapsed))
 
-        # 红绿灯
         if self.signals:
             parts = []
             for lid in sorted(self.signals):
@@ -245,7 +190,6 @@ class Dashboard(object):
         else:
             out.append(u' 红绿灯 (等待信号感知)')
 
-        # 街区人数
         if self.streets:
             for key in ('A', 'B'):
                 value = self.streets.get(key) or {}
@@ -256,11 +200,6 @@ class Dashboard(object):
         else:
             out.append(u' 街区   (等待账本)')
 
-        # 车牌
-        # /semifinal/plate_summary 的值是 official_perception_node 里的
-        # plate_results[label]，即一份 OCR 结果字典
-        # {text, complete, pending_slots, ...}，不是计数。两种形态都兼容，
-        # 免得以后换了发布端就打出原始 dict。
         if self.plates:
             parts = []
             for key, value in sorted(self.plates.items()):
@@ -277,14 +216,12 @@ class Dashboard(object):
                     parts.append(u'%s ×%s' % (label, _text(value)))
             out.append(u' 车牌   %s' % u'  '.join(parts))
 
-        # 避障
         if self.guard:
             out.append(u' 避障   前向障碍=%s 左侧=%s 右侧=%s' % (
                 _pad(_text(self.guard.get('forward_obstacle')), 6),
                 _pad(_text(self.guard.get('left_free')), 6),
                 _text(self.guard.get('right_free'))))
 
-        # 最近识别
         out.append(self.rule())
         out.append(u' 最近识别')
         recent = self.recent[-RECENT_ROWS:]
@@ -305,37 +242,30 @@ class Dashboard(object):
         return u'%02d:%02d:%02d' % (seconds // 3600,
                                     (seconds % 3600) // 60, seconds % 60)
 
-    # ------------------------------------------------------------ 主循环
     def run(self, rate_hz):
         rate = rospy.Rate(rate_hz)
         while not rospy.is_shutdown():
             try:
                 text = self.render()
-            except Exception as exc:                     # 面板绝不能拖垮自己
+            except Exception as exc:
                 text = u'[面板渲染异常 %s: %s]' % (type(exc).__name__, exc)
             if self.plain:
                 _emit(_encode(text) + b'\n\n')
             else:
-                # 光标回左上角重画，避免闪烁
                 _emit(b'\033[H\033[J' + _encode(text) + b'\n')
             sys.stdout.flush()
             rate.sleep()
 
 
 def _encode(text):
-    """把面板文本转成 UTF-8 字节（写文件/日志用）。"""
+    """将面板文本编码为字节。"""
     if sys.version_info[0] == 2:
         return text.encode('utf-8') if isinstance(text, unicode) else text  # noqa: F821
     return text.encode('utf-8') if isinstance(text, str) else text
 
 
 def _emit(payload):
-    """把面板文本安全写到 stdout，bytes 与 str 都接受。
-
-    py2 的 sys.stdout.write 收字节；py3 的只收 str，直接写字节会 TypeError。
-    面板两种解释器都要能跑，所以统一走这里；入参放宽到两种类型，
-    这样调用方不必关心 _encode 到底有没有转成字节。
-    """
+    """兼容两种运行版本的标准输出。"""
     if isinstance(payload, bytes):
         if sys.version_info[0] == 2:
             sys.stdout.write(payload)
@@ -349,7 +279,7 @@ def _emit(payload):
 
 
 def self_test():
-    """不依赖仿真：喂一份假消息，渲染一次，验证面板本身能跑。"""
+    """使用示例消息检查面板，无需启动仿真。"""
     dashboard = Dashboard(plain=True)
     samples = [
         (dashboard.on_task, {'phase': 'observe', 'index': 17,
@@ -394,7 +324,6 @@ def main(argv=None):
     rospy.init_node('patrol_dashboard', anonymous=True)
     dashboard = Dashboard(plain=args.plain, log_path=args.log)
     if not args.plain:
-        # 清屏一次，之后靠 ANSI 定位重画
         _emit(b'\033[H\033[J')
         sys.stdout.flush()
     dashboard.run(args.hz)

@@ -1,10 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Conservative light baseline: select bright coloured lamp, else unknown.
-
-Use only a configured light-housing ROI acquired from visual detection/calibration.
-Full-frame colour search is not safe in a scene containing coloured person cards.
-"""
+"""保守识别亮起的彩色灯，无法确认时返回未知。"""
 import cv2
 import numpy as np
 
@@ -17,8 +13,6 @@ def detect_signal(frame, roi):
     hsv = cv2.cvtColor(crop,cv2.COLOR_BGR2HSV)
     hue,sat,val = cv2.split(hsv)
     scores={}
-    # Quantile is local to pixels with the correct hue, so a red shirt elsewhere
-    # cannot increase the confidence of a green lamp.
     masks={"red":((hue <= 12)|(hue >= 170)),
            "yellow":((hue >= 16)&(hue <= 38)),
            "green":((hue >= 40)&(hue <= 95))}
@@ -40,10 +34,6 @@ def detect_signal(frame, roi):
     if scores[winner] < 0.6 or confidence < 0.5:
         winner="unknown"
     if winner == "unknown":
-        # Official LED lamps have overexposed white diode cores. Yellow contains
-        # both orange and pale-yellow pixels, so competing hue masks can tie.
-        # Only use this recovery when bright white cores are spatially inside
-        # the lamp, not on exterior screws or reflective housing.
         yy,xx=np.ogrid[:h,:w]
         centre=((xx-w/2.0)/(w*.36))**2+((yy-h/2.0)/(h*.36))**2 <= 1
         valid=centre&(sat>100)&(val>185)

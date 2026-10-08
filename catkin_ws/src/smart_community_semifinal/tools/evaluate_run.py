@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""Independent run evaluator. Gazebo truth is subscribed HERE ONLY, never control."""
+"""独立评价跑圈；场景真值仅供评价，不参与控制。"""
 from __future__ import division,print_function
 import io,json,math,os,sys,time,threading
 import rospy,rospkg,tf
@@ -53,7 +53,6 @@ def on_pose(msg):
                                            'physical_clearance_m':clearance})
         for i,line in enumerate(layout['stop_lines']):
             clear=front_clearance(pose,line['point'],line['direction'],margin=0)
-            # Spatially restrict the evaluation to the associated corridor.
             near=abs(pose[1]-3.9)<.22 if i==0 else abs(pose[0]-1.95)<.22 and pose[1]<2.1
             offset=float(clock_offsets.get(line['id'],
                                            0.0 if i==0 else

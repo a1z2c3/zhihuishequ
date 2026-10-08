@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""Camera projection and body/obstacle checks, independent of ROS and truth topics."""
+"""相机投影与车身碰撞检查，不依赖场景真值话题。"""
 from __future__ import division, unicode_literals
 import math
 import os
@@ -47,8 +47,6 @@ def project(points,pose,camera):
 
 
 def card_corners(x,y,z,yaw,width,height):
-    # Source image corners in top-left, top-right, bottom-right, bottom-left order.
-    # Card front normal is (sin(yaw), -cos(yaw), 0).
     co,si=math.cos(yaw),math.sin(yaw)
     return np.array([[x+co*u,y+si*u,z+v] for u,v in
                      [(-width/2,height),(width/2,height),(width/2,0),(-width/2,0)]])
@@ -77,7 +75,6 @@ def polygons_overlap(a,b):
 
 
 def rule_boxes(layout):
-    # Decompose the concave L-shaped A island for a valid convex SAT check.
     boxes=[]
     a=layout.get('a_polygon')
     b=layout.get('b_polygon')
@@ -106,7 +103,7 @@ def _pose(text):
 
 
 def _compose(parent,local):
-    """Compose planar SDF poses, including link/collision offsets."""
+    """合成平面位姿，包含连接和碰撞体偏移。"""
     co,si=math.cos(parent[5]),math.sin(parent[5])
     return [parent[0]+co*local[0]-si*local[1],
             parent[1]+si*local[0]+co*local[1],
@@ -123,7 +120,6 @@ def _collision_obstacles(model,model_pose,name,robot_height):
             if len(dims)!=3 or min(dims)<=0:continue
             collision_pose=_compose(model_pose,
                                     _compose(link_pose,_pose(collision.findtext('pose'))))
-            # Ignore only geometry entirely above the robot body.
             if collision_pose[2]-dims[2]/2>robot_height:continue
             poly=footprint_corners(collision_pose[0],collision_pose[1],
                                    collision_pose[5],dims[0],dims[1],0)
@@ -132,7 +128,7 @@ def _collision_obstacles(model,model_pose,name,robot_height):
 
 
 def physical_obstacles(world_path,robot_height=.24):
-    """Return low box collisions from inline and ``model://`` world models."""
+    """读取场景模型中较低的箱形碰撞体。"""
     root=ET.parse(world_path).getroot();obstacles=[]
     world=root.find('./world')
     if world is None:return obstacles
@@ -161,7 +157,7 @@ def physical_obstacles(world_path,robot_height=.24):
 
 
 def _lane_segments(layout):
-    """Return non-degenerate centre-line segments as ``(a, b, length)``."""
+    """返回端点不同的车道中心线段。"""
     centerline=layout.get('lane_centerline')
     if centerline is None:
         centerline=[item['xy'] for item in layout.get('route',())]
@@ -176,12 +172,7 @@ def _lane_segments(layout):
 
 
 def _lane_strip_excess(point,segment,allowed,extension):
-    """Distance excess for a finite strip around one centre-line segment.
-
-    The strip is extended at both ends by the footprint's turn radius.  This
-    makes adjacent strips overlap at a corner, while points well beyond a
-    route endpoint still use the endpoint distance check below.
-    """
+    """计算超出有限车道条带的距离。"""
     a,b,length=segment
     if length<=1e-9:return math.hypot(point[0]-a[0],point[1]-a[1])-allowed
     dx,dy=b[0]-a[0],b[1]-a[1]
@@ -194,13 +185,7 @@ def _lane_strip_excess(point,segment,allowed,extension):
 
 
 def lane_corridor_error(pose,layout):
-    """Maximum footprint-corner excess beyond the route's drivable corridor.
-
-    A route is a union of oriented strips, not a circular tube around the
-    polyline.  Testing every footprint corner against that union preserves
-    clearance on straight segments and avoids falsely rejecting a rotated
-    footprint at a ninety-degree turn.
-    """
+    """计算车身角点超出可行驶走廊的最大距离。"""
     segments=_lane_segments(layout)
     if not segments:return 0.0
     half_width=float(layout.get('lane_width_m',0.0))/2.0
@@ -219,7 +204,7 @@ def lane_corridor_error(pose,layout):
 
 
 def lane_recovery_vector(pose,layout):
-    """Map-frame vector from the robot centre to the closest lane point."""
+    """计算车体中心指向最近车道点的地图坐标向量。"""
     segments=_lane_segments(layout)
     if not segments:return (0.,0.)
     x,y=pose[:2];best=None
@@ -250,7 +235,7 @@ def body_violation(pose,layout,obstacles=(),include_lane=True):
 
 
 def lane_recovery_allowed(current_pose,projected_poses,layout,obstacles=()):
-    """Permit only monotonic inward recovery from a lane-only violation."""
+    """仅允许从车道越界状态持续向内恢复。"""
     if body_violation(current_pose,layout,obstacles)!='lane_corridor':return False
     initial=lane_corridor_error(current_pose,layout)
     previous=initial
@@ -263,7 +248,7 @@ def lane_recovery_allowed(current_pose,projected_poses,layout,obstacles=()):
 
 
 def trajectory_violation(current_pose,projected_poses,layout,obstacles=()):
-    """Validate sampled swept-footprint poses, allowing only inward recovery."""
+    """检查采样轨迹的车身覆盖范围，仅放行向内恢复。"""
     violations=[body_violation(pose,layout,obstacles) for pose in projected_poses]
     bad=[value for value in violations if value]
     if not bad:return None
@@ -280,12 +265,7 @@ def sampled_twist_poses(pose,speed,lateral,omega,horizon=.25):
 
 
 def lane_limited_twist(pose,speed,lateral,omega,layout,obstacles=(),horizon=.25):
-    """Attenuate a predicted lane exit without hiding other violations.
-
-    Returns ``(speed, lateral, omega, violation, limited)``.  The current pose
-    must already be valid; an existing lane violation is handled by the
-    explicit recovery state instead of this forward-command limiter.
-    """
+    """限制预计越界的速度，不忽略其他违规。"""
     projected=sampled_twist_poses(pose,speed,lateral,omega,horizon)
     violation=trajectory_violation(pose,projected,layout,obstacles)
     if violation!='lane_corridor' or body_violation(pose,layout,obstacles):

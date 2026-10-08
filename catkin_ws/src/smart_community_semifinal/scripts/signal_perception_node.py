@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""Dedicated image-driven ROI publisher and signal classifier with source stamps."""
+"""根据相机图像定位和识别信号灯，保留采集时间。"""
 from __future__ import division, unicode_literals
 import io,json,math,threading,time,os
 import numpy as np
@@ -44,13 +44,7 @@ class SignalNode(object):
                 self.active=None;self.stable_light=None;self.stable_state='unknown';self.green_candidate=0
 
     def stabilize(self,result):
-        """Apply fail-safe temporal hysteresis before policy arbitration.
-
-        Dangerous evidence (red, yellow or unknown) is immediate.  Green is
-        released only after three consecutive fresh classifications; while
-        waiting, a previously known red/yellow state is held so the gate can
-        still witness the real transition instead of seeing a false unknown.
-        """
+        """先进行保守的时序稳定处理，再交给通行策略。"""
         light=result.get('light_id');raw=result.get('state','unknown')
         if light!=self.stable_light:
             self.stable_light=light;self.stable_state='unknown';self.green_candidate=0
@@ -77,9 +71,6 @@ class SignalNode(object):
         lamp=next((r for r in self.layout['lights'] if r['id']==light_id),None)
         if lamp is None:return result
         try:
-            # Camera stamps can lead the latest TF sample by a few
-            # milliseconds in Gazebo. Wait briefly for the exact transform so
-            # a transient TF race does not become an `unknown` signal frame.
             self.listener.waitForTransform('map','base_footprint',
                                            msg.header.stamp,rospy.Duration(.05))
             xyz,q=self.listener.lookupTransform('map','base_footprint',msg.header.stamp)
@@ -92,7 +83,6 @@ class SignalNode(object):
             if candidate is None:return result
             result.update(detect_signal(frame,candidate['roi']))
             self.roi.publish(String(data=json.dumps({'light_id':light_id,'roi':candidate['roi'],'stamp':stamp,'source':'visual_circle_and_housing'})))
-            # Keep the signal evidence on its own fast channel.
             import cv2
             x,y,w,h=candidate['roi'];cv2.rectangle(frame,(x,y),(x+w,y+h),(0,240,240),2)
             cv2.putText(frame,'%s %s %.2f'%(light_id,result['state'],result['confidence']),(x,max(20,y-8)),cv2.FONT_HERSHEY_SIMPLEX,.6,(0,240,240),2)

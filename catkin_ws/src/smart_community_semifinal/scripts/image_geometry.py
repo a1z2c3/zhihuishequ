@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""ROS image decoding and metric position from known-size planar image targets."""
+"""解码相机图像，并根据目标尺寸估算位置。"""
 from __future__ import division, unicode_literals
 import cv2,numpy as np
 

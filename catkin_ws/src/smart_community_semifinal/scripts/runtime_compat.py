@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""Small explicit Python 2.7/3 compatibility layer for the Melodic runtime."""
+"""兼容目标虚拟机和本地运行环境。"""
 from __future__ import division, unicode_literals
 import ctypes
 import errno
@@ -16,15 +16,7 @@ except NameError:
 
 
 def ros_text(value):
-    """rospy's Python 2 logger requires UTF-8 bytes, never ASCII encoding.
-
-    A unicode value is encoded here.  A byte string that already carries
-    UTF-8 is passed through untouched -- but a byte string that is pure ASCII
-    is also fine, so callers can wrap unconditionally.  Callers that format
-    unicode into a message MUST still route the result through this helper:
-    `'%s' % (u'\u82cf',)` yields unicode, and rospy then tries to encode it
-    as ASCII and raises inside whatever transaction called it.
-    """
+    """将日志文本转为兼容旧版运行环境的编码。"""
     if sys.version_info[0]==2 and isinstance(value,text_type):
         return value.encode('utf-8')
     return value
@@ -48,8 +40,6 @@ def makedirs(path):
 if hasattr(time, 'monotonic'):
     monotonic = time.monotonic
 else:
-    # Python 2.7 on the target Linux VM has no time.monotonic. Never replace
-    # command watchdog time with an adjustable wall clock.
     class Timespec(ctypes.Structure):
         _fields_ = [('seconds', ctypes.c_long), ('nanoseconds', ctypes.c_long)]
     _clock = ctypes.CDLL('librt.so.1', use_errno=True).clock_gettime

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""Observation-context image matching, metric PnP ledger and paired evidence."""
+"""匹配观测图像，定位目标并记录识别证据。"""
 from __future__ import division, unicode_literals
 import copy,io,json,os,threading,time
 import numpy as np
@@ -21,22 +21,9 @@ class Node(object):
         with io.open(rospy.get_param('~layout'),encoding='utf-8') as stream:self.layout=json.load(stream)
         self.ledger=StreetLedger();self.listener=tf.TransformListener()
         self.lock=threading.RLock();self.pending=None;self.context={};self.context_id=None;self.K=None
-        # Detection, localization and ledger commitment are separate states.
-        # A single template match must never satisfy an observation point;
-        # stable reference and character evidence are tracked separately.
         self.detected_labels=set();self.localized_labels=set();self.committed_ids=set()
         self.context_instance_frames={};self.plate_frames={}
-        # A plate reference match and character OCR are independent evidence
-        # channels.  Route completion uses the former; the latter remains an
-        # explicit quality signal and never gets silently replaced by the
-        # reference label.
         self.plate_reference_frames={};self.plate_ocr_votes={};self.plate_results={};self.last_stamp=None
-        # Per-instance evidence history.  This is a real temporal fusion
-        # channel: a single weak frame cannot dominate the confidence shown
-        # for an object that has been matched consistently over several
-        # timestamps.  Each entry is (last_frame_index, recent_values) so a
-        # long absence can discard a stale score instead of vouching for a
-        # fresh match with an old one.
         self.confidence_history={}
         self.frame_counter=0
         self.last_received_stamp=None;self.last_processed_stamp=None
@@ -65,9 +52,6 @@ class Node(object):
                 new_active=bool(data.get('active'))
                 rearmed=(new_active and data.get('armed_at',data.get('stamp'))!=old_armed)
                 if context_id!=self.context_id or not new_active or rearmed:
-                    # Drop queued frames from the previous view before arming
-                    # the new one.  The message is latched, so this also makes
-                    # startup deterministic when perception joins late.
                     self.pending=None;self.detected_labels=set();self.localized_labels=set()
                     self.committed_ids=set();self.context_instance_frames={}
                     self.plate_frames={};self.plate_reference_frames={};self.plate_ocr_votes={}
@@ -127,23 +111,10 @@ class Node(object):
             counts[char]=counts.get(char,0)+1
         return self._ocr_consensus(label)
 
-    # A gap this long means the instance was not accepted for several frames,
-    # so its history no longer describes the current observation.
     CONFIDENCE_MAX_GAP=2
 
     def _fuse_confidence(self,detection):
-        """Fuse recent same-instance matches for display/evidence only.
-
-        Commit decisions have already passed the hard gates before this runs;
-        this method never admits or removes a detection.  A median over the
-        last five observations rejects one blurred frame, and the fused value
-        stays a weighted mean so a sustained degradation still shows up.
-
-        This channel is cosmetic, so it must never be able to fail a frame:
-        every failure path returns without touching the detection.  The
-        observation transaction rolls back on exception, and the handshake
-        budget is only five frames per view.
-        """
+        """融合近期匹配分数，仅用于显示和证据记录。"""
         if detection.get('commit_state') not in ('committed',
                                                   'committed_reference_match'):
             return
@@ -197,7 +168,7 @@ class Node(object):
         return bool(polygon and self._inside(point,polygon))
 
     def _commit_detection(self,detection,context,K,msg_stamp,msg):
-        """Commit one detection only after all checks for this view pass."""
+        """当前视角的全部检查通过后提交检测结果。"""
         if not self._accepts(context,detection):
             self._reject(detection,'unexpected_category');return False
         expected_label=context.get('expected_label')
@@ -205,11 +176,6 @@ class Node(object):
             detection['unexpected_label']=True
             detection['expected_label']=expected_label
         if detection.get('category')=='plate':
-            # Plates are physical objects too.  When the route supplies the
-            # current parking bay, require an independent metric position
-            # before allowing this reference match into the observation
-            # quorum.  The expected text remains a disagreement signal, not
-            # the spatial gate.
             target_xy=context.get('target_object_xy',context.get('target_xy'))
             if target_xy is not None:
                 if K is None:
@@ -248,9 +214,6 @@ class Node(object):
                          if char=='?'] if len(text)==7 else [str(i+1) for i in range(7)]
                 detection['ocr_status']='uncertain:slots='+','.join(pending)
             elif ocr.get('text')!=detection.get('label'):
-                # Keep the independently verified reference detection for
-                # route completion, but expose disagreement instead of
-                # silently presenting a guessed character string.
                 detection['character_ocr']=False
                 detection['ocr_status']='disagrees:reference_mismatch'
             else:
@@ -286,8 +249,6 @@ class Node(object):
         try:
             position=planar_position(detection,K)
         except Exception:
-            # One malformed homography must be recorded as a rejected
-            # detection, not discard the rest of the frame transaction.
             position=None
         if position is None:
             self._reject(detection,'pnp_rejected');return False
@@ -367,11 +328,6 @@ class Node(object):
                             reasons.append(detection['rejection_reason'])
                     for detection in detections:
                         self._fuse_confidence(detection)
-                # Completion requires temporal stability of the *reference*
-                # identity and a current matching commit.  Character OCR is
-                # reported separately: a transient OCR rejection must not
-                # discard an otherwise stable physical observation, while an
-                # uncertain character is never replaced by the reference text.
                 stable_count=self._stable_count(
                     context,committed,self.plate_reference_frames,
                     self.context_instance_frames)
@@ -408,24 +364,12 @@ class Node(object):
                     'last_processed_stamp':self.last_processed_stamp})))
                 summaries={street:self.ledger.summary(street) for street in ('A','B')}
                 self.summary.publish(String(data=json.dumps(summaries)))
-                # Human-readable per-view output required by the contest:
-                # keep the machine-readable summary above, and print the
-                # current street totals in recognition order.
-                # Surface candidates the photometric bound dropped, so a
-                # marginal reference is visible in scene.log rather than only
-                # as a shortfall in the final population count.
                 for rejected in reference_detector.drain_rejections():
                     rospy.loginfo(ros_text('Reference dropped: %s correlation %.4f < %.2f (inliers %d)' % (
                         rejected['label'], rejected['correlation'],
                         rejected['bound'], rejected['inliers'])))
                 if context.get('street') in ('A','B'):
                     street_summary=summaries[context['street']]
-                    # Keep the literal a unicode string and hand it to
-                    # ros_text(): rospy's Python 2 logger encodes its argument
-                    # as ASCII, so a plain str carrying UTF-8 bytes raises
-                    # UnicodeEncodeError.  That exception is caught by the
-                    # transaction handler below and would silently fail every
-                    # frame, which shows up as observation_timeout.
                     rospy.loginfo(ros_text(u'[%s街区][%s] 社区人员 %d，非社区人员 %d，总计 %d' % (
                         context['street'],context.get('view',''),
                         street_summary['resident'],street_summary['visitor'],
@@ -435,20 +379,11 @@ class Node(object):
                     plate_summary,ensure_ascii=False)))
                 rospy.loginfo(ros_text('Street ledger %s'%json.dumps(summaries)))
             except Exception as exc:
-                # The error path must never raise: an exception raised here
-                # would replace the original failure and lose the diagnosis.
-                # ros_text keeps a unicode exception message from tripping the
-                # Python 2 ASCII logger, exactly as the success path does.
                 try:
                     rospy.logerr_throttle(2, ros_text('Perception failed: %s' % exc))
                 except Exception:
                     pass
-                # Evidence writing is part of the observation transaction.  If
-                # the paired PNG/JSON record fails, do not leave a successful
-                # ledger or plate quorum behind for a later frame to inherit.
                 with self.lock:
-                    # A context switch owns the new transaction.  Never put
-                    # the old view's plate/quorum state back into it.
                     if self.context_id==context.get('context_id'):
                         self.ledger.instances=ledger_before
                         self.plate_frames=plates_before

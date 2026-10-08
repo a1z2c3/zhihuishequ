@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""Dependency-free contracts shared by the optional navigation client."""
+"""导航客户端共用的状态检查。"""
 from __future__ import division, unicode_literals
 from runtime_compat import isfinite
 
 
 def gate_entry_ready(guard, gate, now, max_age=.35):
-    """Return true only for a fresh, valid permit for the requested gate."""
+    """检查当前路口的通行许可是否有效且未过期。"""
     if not isinstance(guard, dict):
         return False
     try:

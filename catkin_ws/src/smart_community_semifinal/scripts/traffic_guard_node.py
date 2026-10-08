@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""Sole velocity publisher: sensor, command, geometry and fresh visual checks."""
+"""统一发布速度，检查传感器、指令、几何和视觉状态。"""
 from __future__ import division, unicode_literals
 import io,json,math,threading,time
 import rospy,tf
@@ -22,9 +22,6 @@ class Guard(object):
         cycle=self.layout.get('signal_cycle',{})
         self.listener=tf.TransformListener();self.policy=CrossingPolicy(cycle);self.lock=threading.RLock()
         self.command=Twist();self.command_at=None;self.command_sim=None;self.scan=None;self.scan_at=None;self.pose=None
-        # Laser rays can straddle a mesh edge in Gazebo. Hold a selected
-        # one-way corridor briefly so the command does not chatter between
-        # motion and zero while Patrol keeps the same avoidance side locked.
         self.obstacle_hold_until=0.0;self.obstacle_hold_side=None
         self.output=rospy.Publisher('/cmd_vel',Twist,queue_size=1)
         self.status=rospy.Publisher('/semifinal/guard_status',String,queue_size=1)
@@ -74,8 +71,6 @@ class Guard(object):
                     if not -.1<=now-stamp.to_sec()<.4:raise ValueError('stale_tf')
                     xyz,q=self.listener.lookupTransform('map','base_footprint',stamp)
                     self.pose=(xyz[0],xyz[1],tf.transformations.euler_from_quaternion(q)[2])
-                    # Software-rendered VM runs at <=0.2 real-time. Enforce both
-                    # simulation-time freshness and a bounded wall watchdog.
                     if self.command_at is None or monotonic()-self.command_at>1.0 or not 0<=now-self.command_sim<.15:raise ValueError('command_timeout')
                     if self.scan_at is None or monotonic()-self.scan_at>1.5 or not 0<=now-self.scan.header.stamp.to_sec()<.4:raise ValueError('stale_scan')
                     speed=max(0.,min(.18,self.command.linear.x));lateral=max(-.12,min(.12,self.command.linear.y));omega=max(-.55,min(.55,self.command.angular.z))
@@ -83,18 +78,9 @@ class Guard(object):
                     if current_violation=='lane_corridor':
                         lane_recovery=True
                         vx,vy=lane_recovery_vector(self.pose,self.layout)
-                        # Convert the map-frame vector toward the closest
-                        # lane point into the robot's body-left convention.
                         yaw=self.pose[2]
                         lane_recovery_lateral=max(-1.,min(1.,
                             -math.sin(yaw)*vx+math.cos(yaw)*vy))
-                    # Check the complete commanded horizon, not just its end
-                    # point. Endpoint-only checks can tunnel through a thin
-                    # pole or card when the VM publishes a large time step.
-                    # Keep the nominal horizon, but extend it when wall-time
-                    # scheduling has delayed the command callback. This
-                    # prevents a delayed guard tick from creating an unseen
-                    # validation-to-actuation gap.
                     command_age=0. if self.command_at is None else max(0.,monotonic()-self.command_at)
                     horizon=max(.25,min(.75,.25+command_age*5.0))
                     projected_poses=sampled_twist_poses(
@@ -102,17 +88,10 @@ class Guard(object):
                     bad=trajectory_violation(self.pose,projected_poses,
                                              self.layout,self.obstacles)
                     if bad=='lane_corridor' and current_violation is None:
-                        # A legal pose may still leave the corridor during
-                        # the prediction horizon.  Preserve forward progress
-                        # where possible and attenuate only the offending
-                        # lateral/turning component before resorting to zero.
                         speed,lateral,omega,bad,lane_limited=lane_limited_twist(
                             self.pose,speed,lateral,omega,self.layout,
                             self.obstacles,horizon)
                     if bad=='lane_corridor' and lane_recovery:
-                        # Let patrol receive a valid status and generate an
-                        # inward recovery command on the next cycle.  A
-                        # regular outward command is never passed through.
                         speed=lateral=omega=0.;bad=None
                     if bad:raise ValueError('body_constraint:'+bad)
                     clearance=scan_clearance(self.scan,speed)
@@ -169,7 +148,6 @@ class Guard(object):
                     'left_clearance':clearance.get('left_clearance',0.0),
                     'right_clearance':clearance.get('right_clearance',0.0),
                     'stamp':now,'map_pose':self.pose})))
-            # Publish a fresh zero command even if simulated /clock stalls.
             time.sleep(.04)
 
 

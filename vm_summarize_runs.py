@@ -1,19 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""汇总 vm_runs 下的所有整圈记录，输出成功率表与 JSON。
-
-可在 Windows 或虚拟机里跑（只读 tar.gz，不需要 ROS）。
-
-用法:
-    python vm_summarize_runs.py [归档目录] [-o 汇总.json]
-默认归档目录 = 本脚本同级的 vm_runs/
-
-判据（三个分开报，再报联合）:
-    完成     task.phase == 'done'
-    无违规   body_violations 为空
-    合规穿越 每次停止线穿越 pass 均为 true
-    联合成功 三者同时成立   <- 表里的"成功"列用这一条
-"""
+"""汇总归档跑圈及验收指标。"""
 import argparse
 import io
 import json
@@ -34,7 +21,7 @@ def comb(n, k):
 
 
 def cp_lower(k, n, alpha=0.05):
-    """Clopper-Pearson 精确单侧下限。k/n 全成功时不是 1.0。"""
+    """计算精确的单侧置信下界。"""
     if n == 0:
         return 0.0
     if k == 0:
@@ -46,9 +33,6 @@ def cp_lower(k, n, alpha=0.05):
     for _ in range(200):
         mid = (lo + hi) / 2.0
         tail = sum(comb(n, i) * mid ** i * (1 - mid) ** (n - i) for i in range(k, n + 1))
-        # P(X >= k | p) 关于 p 单调【递增】：p 越大越容易成功 k 次以上。
-        # 所以 tail < target 说明 mid 偏小（要往大走），tail > target 说明 mid 偏大。
-        # 早先这里写反了，导致只要 k < n 就收敛到错误一侧：9/10 报 0%、8/10 报 100%。
         if tail < target:
             lo = mid
         else:
@@ -57,8 +41,6 @@ def cp_lower(k, n, alpha=0.05):
 
 
 def load_from_tar(path):
-    # 旧版 vm_run_lap.sh 归档成 <RUN_ID>/evaluation/run_result.json；
-    # 新版直接写在证据目录根下。两种都要认，否则新版证据会被静默跳过。
     fallback = None
     with tarfile.open(path, "r:gz") as tf:
         for member in tf.getmembers():

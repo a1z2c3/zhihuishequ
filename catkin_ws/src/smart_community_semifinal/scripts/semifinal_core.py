@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""ROS-independent rule checks and evidence contracts, Python 2.7/3 compatible."""
+"""与中间件无关的规则检查和证据约定。"""
 from __future__ import division, unicode_literals
 import io
 import json
@@ -10,9 +10,6 @@ import time
 from runtime_compat import isfinite, makedirs
 
 
-# Keep the physical contract in one module.  Guard and patrol use the same
-# dimensions, so changing a footprint parameter cannot silently change only
-# one half of the safety decision.
 BODY_LENGTH = .334
 BODY_WIDTH = .303
 FOOTPRINT_MARGIN = .020
@@ -23,22 +20,7 @@ REAR_EXTENT = BODY_LENGTH / 2.0 + FOOTPRINT_MARGIN
 
 
 def temporal_confidence(history, value, window=5, frames_since=1, max_gap=2):
-    """Fuse one accepted match with a bounded recent evidence window.
-
-    This is deliberately independent of ROS so the temporal confidence
-    contract can be tested on both Python 2.7 and Python 3.  It returns the
-    median history, the current fused score, and the retained window.
-
-    ``frames_since`` is the number of processed frames since this same
-    instance was last accepted.  A gap larger than ``max_gap`` discards the
-    history: an object that reappears after being unseen must not inherit a
-    stale high score, because that would let an old good match vouch for a
-    fresh and possibly wrong one.  Defaults keep the single-frame behaviour.
-
-    The fused value is deliberately lagging -- it is a weighted mean of the
-    current frame and the window median, so a single blurred frame cannot
-    dominate while a sustained degradation still shows up within a few frames.
-    """
+    """融合当前有效匹配与有限窗口内的近期证据。"""
     try:
         value=float(value);window=int(window);frames_since=int(frames_since)
     except (TypeError,ValueError):
@@ -68,7 +50,7 @@ def footprint_corners(x, y, yaw, length=BODY_LENGTH, width=BODY_WIDTH,
 
 
 def integrate_twist_pose(pose, speed, lateral, omega, duration):
-    """Integrate a constant body-frame holonomic twist for one sample."""
+    """根据恒定的车体速度积分位姿。"""
     if not all(isfinite(v) for v in (speed,lateral,omega,duration)) or duration < 0:
         raise ValueError('invalid twist integration input')
     x,y,yaw=pose[:3]
@@ -85,7 +67,7 @@ def integrate_twist_pose(pose, speed, lateral, omega, duration):
 
 
 def front_clearance(pose, line_point, direction, margin=0.02):
-    """Positive while the entire inflated footprint is behind the stop line."""
+    """车身膨胀轮廓完全位于停止线后方时为正。"""
     dx, dy = direction
     norm = math.hypot(dx, dy)
     if norm == 0:
@@ -96,7 +78,7 @@ def front_clearance(pose, line_point, direction, margin=0.02):
 
 
 def body_over_stop_line(pose, line_point, direction):
-    """True while the physical body straddles a stop line."""
+    """判断实际车身是否跨在停止线上。"""
     dx, dy = direction
     norm = math.hypot(dx, dy)
     if norm == 0:
@@ -117,15 +99,7 @@ def braking_distance(speed, latency=0.25, deceleration=0.35, buffer=0.03):
 
 
 def scan_clearance(scan, speed):
-    """Classify a scan against bounded, inflated body corridors.
-
-    Coordinates are in the laser frame, which is coincident with the planar
-    base frame in the teaching robot.  The algorithm deliberately ignores
-    the outer lane edge (|y| ~= .30) as a route boundary rather than treating
-    it as a temporary obstacle.  ``obstacle_ahead`` remains true until the
-    obstacle's rear edge is behind the inflated rear footprint, preventing a
-    premature recenter into a long obstacle.
-    """
+    """根据膨胀车身的有限走廊检查激光通行空间。"""
     body_half_width = BODY_WIDTH / 2.0 + FOOTPRINT_MARGIN
     half = body_half_width + SIDE_SAFETY
     stop_horizon = .187 + braking_distance(max(abs(speed), .08))
@@ -147,37 +121,21 @@ def scan_clearance(scan, speed):
         angle = scan.angle_min + i * scan.angle_increment
         x = distance * math.cos(angle)
         y = distance * math.sin(angle)
-        # Include a short rear interval for pass confirmation.  Points behind
-        # the robot beyond the inflated rear footprint cannot affect motion.
         if x <= rear_limit or x >= .65:
             continue
         if x < stop_horizon and abs(y) <= half:
             forward = True
-        # Only points inside the center body corridor participate in the
-        # longitudinal obstacle state.  A side obstacle (for example a lamp
-        # leg at |y| ~= .30) must not remain "ahead" after the robot has
-        # shifted to the opposite corridor.  The rear limit is the swept-body
-        # criterion: once the obstacle is behind the inflated rear edge it no
-        # longer blocks recentering.
         if abs(y) <= half + AVOID_SHIFT:
             recenter_blocked = True
         if abs(y) <= half:
             center_blocked = True
             if x > rear_limit:
                 obstacle_ahead = True
-        # Longitudinal occupancy is evaluated in each candidate corridor.
-        # This lets a shifted robot pass a side obstacle without treating it
-        # as a center obstacle, while still keeping the selected corridor
-        # occupied until its rear edge clears the inflated body.
         if abs(y - AVOID_SHIFT) <= half and x > rear_limit:
             left_obstacle_ahead = True
         if abs(y + AVOID_SHIFT) <= half and x > rear_limit:
             right_obstacle_ahead = True
         if abs(y) <= half + AVOID_SHIFT and x > rear_limit:
-            # The rear edge is the smallest forward-coordinate sample.  The
-            # robot may recenter only after this edge is behind the inflated
-            # rear footprint; using the front edge here would unnecessarily
-            # prolong the detour and hides the actual swept-volume contract.
             obstacle_rear_x = x if obstacle_rear_x is None else min(obstacle_rear_x,x)
         left_distance = abs(y - AVOID_SHIFT) - half
         right_distance = abs(y + AVOID_SHIFT) - half
@@ -206,12 +164,7 @@ def scan_clearance(scan, speed):
 
 
 class GreenGate(object):
-    """A clock prediction still requires fresh visual evidence.
-
-    Timestamp must be the image acquisition time in the same clock domain as now.
-    Repeated frames, clock resets, missing observations, red and yellow close it.
-    This grants entry only; already crossing vehicles need a separate exit policy.
-    """
+    """时钟预测仍须由新鲜的视觉证据确认。"""
     def __init__(self, max_age=0.35, min_frames=3, min_confidence=0.70, max_gap=0.30):
         self.max_age, self.min_frames = max_age, min_frames
         self.min_confidence, self.max_gap = min_confidence, max_gap
@@ -236,7 +189,6 @@ class GreenGate(object):
             self.count, self.state = 0, "unknown"
             return False
         if self.stamp is not None and stamp <= self.stamp:
-            # Replay must not accumulate confirmations or keep a stale green alive.
             if stamp < self.stamp:
                 self.count, self.state = 0, "unknown"
             return False
@@ -253,12 +205,7 @@ class GreenGate(object):
 
 
 class StreetLedger(object):
-    """Count physical instances by map position, independently from image class.
-
-    Two copies of one artwork remain two people; seeing one person twice remains
-    one. Metric position must come from timestamped depth/TF or multi-view geometry.
-    Artwork IDs alone are never a valid whole-street counter.
-    """
+    """按地图位置统计实际实例，不以图像类别代替身份。"""
     def __init__(self, radius=0.055, min_views=3):
         self.radius, self.min_views = radius, min_views
         self.instances = []
@@ -296,12 +243,7 @@ class StreetLedger(object):
 
 
 class EvidenceWriter(object):
-    """One detection object drives both terminal JSON and annotated image.
-
-    The caller supplies an image writer to keep this component independent of cv2.
-    Write image first, then append the record; a failed image write cannot produce
-    a terminal-only success. Confidence is explicitly a score until calibrated.
-    """
+    """终端记录和标注图像使用同一份检测结果。"""
     def __init__(self, directory, image_writer, run_id=None):
         self.directory = directory
         makedirs(directory)

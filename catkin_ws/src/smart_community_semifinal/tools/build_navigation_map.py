@@ -1,11 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""Overlay semantic rule zones on the measured SLAM map for move_base.
-
-AMCL continues to use the measured ``slam_map``.  The derived map is only for
-the global costmap, so lane/rule geometry is represented to Navfn without
-pretending that painted boundaries are lidar observations.
-"""
+"""将规则区域叠加到实测建图结果中。"""
 from __future__ import division,print_function,unicode_literals
 import argparse
 import io

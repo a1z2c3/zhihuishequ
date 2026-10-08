@@ -1,35 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""make_random_plates.py -- 生成随机车牌素材（供车辆识别场景使用）。
-
-为什么不用"在线车牌生成器"
---------------------------
-比赛允许使用三张示例车牌，但**要求至少两张是随机号码**。用外部在线服务生成
-看起来最省事，但它用的是**另一种字体**，而本项目的字符 OCR 模板是按官方三张
-示例牌标定的（`plate_ocr.PlateCharacterRecognizer`）。实测把在线生成的
-`川H7WHEE` 喂进去只读出 `赣?7?H?2`，7 个槽位错 3 个。任务要求里明确写着
-"车牌识别 —— 识别车辆号牌并**输出字符结果**"，所以读不出字符就是不合规。
-
-做法：从官方牌里"剪字符、重组合"
---------------------------------
-`PlateCharacterRecognizer` 把车牌按宽度比例切成 7 个固定槽位（`SLOTS`），每个
-槽位再与"在该槽位出现过的字符"的模板比对。因此只要**每个新字符都从"它原本被
-正确识别过的那张官方牌的同一个槽位"剪出来**，字体、字号、位置就完全一致，
-生成后仍须经过 OCR 自检，确认新号码可被完整读出。
-
-约束：只能用官方三张牌里已经出现过的字符（共 14 个），所以新号码是这 14 个字符
-的新组合，而不是全新字形。这满足"随机号码"的要求；若日后要引入全新字形，必须
-先扩充字符模板集。
-
-用法
-----
-    python tools/make_random_plates.py                # 内置种子，结果可复现
-    python tools/make_random_plates.py --seed 1234    # 换一组组合
-    python tools/make_random_plates.py --picks 二,二,一,三,二,二,一 --index 1
-
-生成后必须把新号码同步到 `build_official_scene.py` 的 `PLATE_LABELS` 与路线里的
-`expected_label`，否则评价器会认为车牌不匹配（脚本会打印可直接粘贴的行）。
-"""
+"""使用给定字符样本生成车牌图案。"""
 from __future__ import print_function
 
 import argparse
@@ -49,7 +20,6 @@ OUT_DIR = os.path.join(PKG, "assets", "random_plates")
 DEFAULT_MATERIALS = os.environ.get("SEMIFINAL_MATERIALS", r"D:/智慧社区/复赛资料")
 DEFAULT_SEED = 20260927
 
-# 官方三张示例牌：短名 -> (文件名, 车牌文字)
 EXAMPLES = (
     ("一", "车牌一.png", u"苏AB8Q62"),
     ("二", "车牌二.png", u"鄂D7B5Q2"),
@@ -59,14 +29,14 @@ SLOTS = ((1, "random_1.png"), (2, "random_2.png"))
 
 
 def slot_pixels():
-    """OCR 的 7 个槽位在像素上的左右边界。"""
+    """返回七个字符槽位的像素边界。"""
     width = Recognizer.WIDTH
     return [(int(round(a * width)), int(round(b * width)))
             for a, b in Recognizer.SLOTS]
 
 
 def load_examples(materials):
-    """读入官方示例牌，统一缩放到 OCR 的工作尺寸。返回 短名 -> (RGB 数组, 文字)。"""
+    """读取并统一示例车牌尺寸。"""
     plates = {}
     for key, filename, text in EXAMPLES:
         path = os.path.join(materials, u"车辆识别", filename)
@@ -78,7 +48,7 @@ def load_examples(materials):
 
 
 def character_bank(plates):
-    """槽位 -> {字符: 来源短名}，只收录在该槽位确实出现过的字符。"""
+    """按槽位索引可用字符样本。"""
     bank = {}
     for key, (_image, text) in plates.items():
         for index, char in enumerate(text):
@@ -87,16 +57,12 @@ def character_bank(plates):
 
 
 def random_picks(bank, rng):
-    """随机挑一条新号码；每个槽位从该槽位可用的字符里取一个。"""
+    """从各槽位的可用字符中随机组合新车牌。"""
     return [rng.choice(sorted(bank[index].items())) for index in range(7)]
 
 
 def compose(plates, picks):
-    """保留完整牌面底图，再替换七个字符槽位。
-
-    OCR 槽位不覆盖边框和第二、第三字符之间的圆点。不能用黑色画布
-    起步，否则这些未覆盖的列会留下贯穿牌面高度的黑缝。
-    """
+    """保留牌面背景，替换字符槽位。"""
     out = plates[picks[0][1]][0].copy()
     bounds = slot_pixels()
     for index, (_char, source) in enumerate(picks):
@@ -132,7 +98,6 @@ def main(argv=None):
     if not os.path.isdir(OUT_DIR):
         os.makedirs(OUT_DIR)
 
-    # 自检：生成的牌必须能被本项目 OCR 完整读出，否则不要采用
     recognizer = Recognizer([(plates[k][0][:, :, ::-1], plates[k][1])
                              for k, _f, _t in EXAMPLES])
     prepared = []

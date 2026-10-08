@@ -1,14 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""Generate semantic patrol waypoints from the saved occupancy map.
-
-This is a small, dependency-free A* planner for the teaching VM.  It uses the
-same map origin/resolution as ``map_server`` and emits the existing route
-schema: semantic observation/gate targets are retained, while intermediate
-``plan_*`` poses are inserted between them.  Unknown map cells follow the
-project's ``track_unknown_space: false`` contract and are treated as free;
-black occupied cells are inflated by the configured clearance.
-"""
+"""根据保存的占据地图生成巡检路线点。"""
 from __future__ import division, print_function, unicode_literals
 import argparse
 import heapq
@@ -52,7 +44,7 @@ def grid_to_world(col,row,origin,resolution,width,height):
 
 
 def constrain_to_field(blocked,width,height,origin,resolution,field,bound):
-    """Keep planned robot centres inside the physical field footprint."""
+    """将规划的车体中心约束在场地范围内。"""
     result=list(blocked)
     field_width,field_height=float(field[0]),float(field[1])
     for row in range(height):
@@ -65,7 +57,7 @@ def constrain_to_field(blocked,width,height,origin,resolution,field,bound):
 
 
 def constrain_rule_zones(blocked,width,height,origin,resolution,layout):
-    """Keep the planner out of rectangular decompositions of rule zones."""
+    """禁止规划路径进入规则限制区域。"""
     a=layout.get('a_polygon');b=layout.get('b_polygon')
     boxes=[]
     if a and len(a)>=5:
@@ -137,7 +129,6 @@ def astar(start,goal,blocked,width,height):
             nxt=(current[0]+dc,current[1]+dr)
             if not (0<=nxt[0]<width and 0<=nxt[1]<height):continue
             if blocked[nxt[1]*width+nxt[0]]:continue
-            # Prevent diagonal corner cutting through two occupied cells.
             if dc and (blocked[current[1]*width+nxt[0]] or
                        blocked[nxt[1]*width+current[0]]):continue
             value=cost[current]+step

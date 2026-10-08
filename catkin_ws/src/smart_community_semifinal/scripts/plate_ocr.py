@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""Constrained seven-character OCR for the supplied plate artwork domain."""
+"""识别给定车牌素材中的七位字符。"""
 from __future__ import division, unicode_literals
 import cv2
 import numpy as np
@@ -9,34 +9,8 @@ import numpy as np
 class PlateCharacterRecognizer(object):
     WIDTH=200
     HEIGHT=81
-    # Real rectified camera crops vary by position. The weak fourth and
-    # seventh slots require morphology checks as well as a lower score; the
-    # other slots retain a stricter unknown-character rejection threshold.
-    # Slot-specific floors are calibrated to the fixed rectified geometry,
-    # not to the character that happened to win the ranking.  This keeps a
-    # weak D/L observation from receiving an answer-dependent discount.
-    # Slot 5 has only the supplied ``Q``/``1`` shape family.  The rendered
-    # ``1`` loses stroke mass under the VM's 0.2x software-camera sampling;
-    # keep the normal margin gate, but use the empirically bounded floor .52.
-    # Leave-one-plate-out remains below this floor (.509), so an unseen glyph
-    # is still rejected instead of being promoted by the relaxed score alone.
-    # Slot 1's floor is bounded from BELOW by the leave-one-plate-out score,
-    # which is the highest a character absent from the templates can reach:
-    # 0.6895 for this slot (measured, tools/test_plate_ocr.py).  Any floor at
-    # or below that accepts a wrong character -- 0.60 was tried and the
-    # held-out plate's D was read as an A, failing that regression test.
-    # It is bounded from ABOVE by what the LIVE rectified crop actually
-    # scores.  The VM camera blurs the plate, so slot 1 reads 0.7679-0.7681
-    # live against 0.9226 on the fixture artwork -- a 0.15 drop that the old
-    # 0.78 floor did not allow for, which is why the two randomly generated
-    # plates abstained on their city letter while the official plate (0.99)
-    # passed.  Reproduce offline by warping the evidence frame through the
-    # recorded plate quad.
-    # 0.74 sits inside the measured window (0.6895, 0.7679): +0.050 above the
-    # wrong-character ceiling and +0.028 below the live correct value.
     SCORE_THRESHOLDS=(.86,.74,.85,.60,.52,.85,.65)
     MARGIN_THRESHOLD=.04
-    # Province, city letter, then the five characters following the separator.
     SLOTS=[(.01,.145),(.145,.285),(.335,.46),(.46,.59),(.59,.72),(.72,.85),(.85,.99)]
     Y_RANGE=(.06,.88)
 
@@ -71,7 +45,6 @@ class PlateCharacterRecognizer(object):
         if crop.size==0:raise ValueError('empty character slot')
         smooth=cv2.GaussianBlur(crop,(3,3),0)
         _,binary=cv2.threshold(smooth,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
-        # The supplied plates use bright characters on a dark blue field.
         if float(binary.mean())>127.:binary=cv2.bitwise_not(binary)
         count,_,stats,_=cv2.connectedComponentsWithStats(binary,8)
         components=[stats[i] for i in range(1,count) if stats[i,cv2.CC_STAT_AREA]>=2]
@@ -100,12 +73,7 @@ class PlateCharacterRecognizer(object):
 
     @staticmethod
     def _chamfer_similarity(a,b):
-        """Symmetric distance-transform similarity for binary glyphs.
-
-        IoU alone rewards dense glyphs and makes thin characters collapse onto
-        filled ones.  A symmetric chamfer term compares stroke locations while
-        remaining available in the old OpenCV 3.2 runtime.
-        """
+        """计算二值字形的对称距离变换相似度。"""
         a8=(a.astype(np.uint8)*255)
         b8=(b.astype(np.uint8)*255)
         da=cv2.distanceTransform(cv2.bitwise_not(a8),cv2.DIST_L2,3)
@@ -133,24 +101,15 @@ class PlateCharacterRecognizer(object):
             left.append(pixels[0]);right.append(pixels[-1])
         if not left:return holes,0.,0.,0.
         left_std=float(np.std(left));right_std=float(np.std(right))
-        # A rotation moves both edges together.  The left/right variation
-        # ratio therefore remains useful for B (straight left stem) versus 8
-        # (curved on both sides), unlike the absolute left-edge std alone.
         ratio=left_std/max(right_std,1e-6)
         return holes,ratio,left_std,right_std
 
     def _candidate_score(self,glyph,shape,template,char,index):
         reference_shape=self.template_shapes[id(template)]
-        # Keep every candidate in the ranking.  Removing a candidate makes a
-        # one-candidate list look artificially decisive and turns ``margin``
-        # into the absolute score, defeating unknown-character rejection.
         penalty=1.0
         if index and shape[0]!=reference_shape[0]:penalty*=.55
-        # Both B and 8 have two holes, but only B has a straight left stem.
         if char=='B' and shape[1]>.45:penalty*=.60
         if char=='8' and shape[1]<.45:penalty*=.60
-        # The thin L loses template similarity under camera resampling.  Its
-        # long bottom bar distinguishes it from other hole-free verticals.
         if char=='L':
             bottom=int(np.count_nonzero(glyph[-8:].any(axis=0)))
             top=int(np.count_nonzero(glyph[:8].any(axis=0)))
@@ -174,9 +133,6 @@ class PlateCharacterRecognizer(object):
                 score,char=ranked[0]
                 margin=score-(ranked[1][0] if len(ranked)>1 else 0.)
                 threshold=self.SCORE_THRESHOLDS[slot_index]
-                # Even a slot with only one available template must clear the
-                # margin floor (where margin equals its score).  There is no
-                # longer a path that promotes a weak, filtered survivor.
                 accepted=(score>=threshold and margin>=self.MARGIN_THRESHOLD)
                 chars.append(char if accepted else '?')
                 scores.append(round(score,4));margins.append(round(margin,4))

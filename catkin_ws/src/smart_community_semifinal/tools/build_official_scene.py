@@ -1,11 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Generate an auditable 4.2 m scene from supplied competition artwork.
-
-60 cm annotated lanes control dimensions. Unannotated coordinates and person
-placements are explicitly reconstruction assumptions, never official ground truth.
-The white lane markings are visual-only, not fictitious LiDAR walls.
-"""
+"""根据素材生成场景；重建坐标为仿真设定。"""
 import argparse
 import hashlib
 import json
@@ -16,53 +11,13 @@ from xml.sax.saxutils import escape
 from PIL import Image, ImageDraw, ImageOps
 
 PKG = Path(__file__).resolve().parents[1]
-# The contest only requires the signal to switch between red/green/yellow and
-# that the robot stops on red; it does NOT fix the period, the phase offsets or
-# the individual durations (see 复赛资料/任务要求.txt).  The cycle below is our
-# own simulation assumption: 10 s red / 5 s yellow / 15 s green, matching the
-# durations the contest asks for ("red 10 s, yellow 5 s, green 15 s").
-# light_1's offset is chosen deliberately:
-#
-#   The crossing policy needs a WITNESSED red/yellow -> green transition, and a
-#   red episode of at least min_red_observation = 0.5 * red_s = 5.0 s to accept
-#   it.  The perception starts tracking light_1 at about sim 2 s (when the task
-#   target becomes approach_light_1) and the robot reaches that gate at about
-#   sim 8-11 s.  With the original offset 0.0 the red window was [0, 10) s, so
-#   the robot often arrived with only 0-2 s of observed red -- the transition
-#   was rejected and it had to wait a whole extra 28 s cycle, which reads as
-#   "green but not moving" on camera.
-#
-#   offset 16.0 with period 30 puts the red window at [14, 24) s and the green
-#   onset at 24 s.
-#   The measured arrival at this gate is 13-15 s (sim time) and it jitters by a
-#   few seconds between runs, so a narrow window cannot cover it.  [11, 21)
-#   does: an arrival anywhere in 14-18 s is still red, and the perception's
-#   first red frame lands 1-2 s after the arrival, so the red episode seen
-#   before the 24 s onset is 8-10 s -- well clear of the 5 s requirement.  An
-#   earlier arrival (0-11 s green, 11-14 s yellow) still witnesses a
-#   red->green transition at 24 s.  offset 17 was tried first and left only a
-#   ~1 s margin, which the run-to-run jitter consumed.  The gate wait is 9 s
-#   instead of a full 28 s cycle.
-#
-#   Locking the phase clock on that first witnessed transition also makes
-#   light_2 robust, because _infer_green_start() then covers a first-sight
-#   green there.
 SIGNAL_CYCLE = {"period_s": 30.0, "red_s": 10.0, "green_s": 15.0,
                 "yellow_s": 5.0, "light_2_offset_s": 7.0,
                 "offsets_s": {"light_1": 16.0, "light_2": 7.0}}
 
-# Official semifinal standee specification from the supplied training sheet.
-# Keep the physical board size independent of artwork canvas aspect ratio.
 PERSON_WIDTH_M = 0.05
 PERSON_HEIGHT_M = 0.15
 PERSON_THICKNESS_M = 0.005
-# A low, narrow foot makes the board read as a freestanding sign in Gazebo.
-# The foot must never exceed the regulated board footprint: the rule fixes the
-# standee at 15 cm x 5 cm x 5 mm, and the geometry audits read width_m /
-# height_m (the board) to decide clearance.  A 7 cm foot silently made every
-# model 2 cm wider than the board and 1 cm tighter on the obstacle side than
-# the audits reported, so the foot is now 5 cm x 3 cm -- the board itself stays
-# exactly 15 cm x 5 cm x 5 mm.
 PERSON_BASE_WIDTH_M = 0.05
 PERSON_BASE_DEPTH_M = 0.03
 PERSON_BASE_HEIGHT_M = 0.012
@@ -70,7 +25,7 @@ FIELD_M = 4.2
 
 
 def write_text_lf(path, text):
-    """Write generated text deterministically on Windows and Linux."""
+    """统一生成文本的换行格式。"""
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="\n") as stream:
         stream.write(text)
@@ -81,7 +36,7 @@ def save_json(path, value):
 
 
 def artwork_dimensions(image_size, width, height):
-    """Return the physical size of the undistorted artwork inside the board."""
+    """返回立牌内未变形图案的实际尺寸。"""
     image_width, image_height = image_size
     target = float(width) / float(height)
     if image_width / float(image_height) > target:
@@ -92,28 +47,15 @@ def artwork_dimensions(image_size, width, height):
 
 
 def mesh(path, width, height, texture="texture.png", ground=False, thickness=0.0):
-    # Front lies in X-Z with normal -Y; yaw rotates this normal toward observers.
     if ground:
         positions = "0 0 0 {w} 0 0 {w} {h} 0 0 {h} 0".format(w=width,h=height)
         uv = "0 0 1 0 1 1 0 1"
     else:
-        # A closed thin box gives the regulated board a visible edge from
-        # oblique Gazebo views. The front remains the exact recognition plane;
-        # the rear and four side faces use the same opaque material so the
-        # object no longer reads as an infinitely thin sheet.
         if thickness:
             t=thickness/2.0; a=-width/2; b=width/2; z0=0.; z1=height
             positions="%s" % " ".join("%g %g %g"%p for p in [
                 (a,-t,z0),(b,-t,z0),(b,-t,z1),(a,-t,z1),
                 (a,t,z0),(b,t,z0),(b,t,z1),(a,t,z1)])
-            # Front face (verts 0-3, bottom-left/bottom-right/top-right/top-left)
-            # must keep V=0 at the BOTTOM, exactly as the flat-plane mesh did.
-            # The first version of this box used (0,1),(1,1),(1,0),(0,0) for the
-            # front, which renders the artwork vertically mirrored -- ORB then
-            # matches nothing and every observation times out.  The back face
-            # (verts 4-7) is mirrored horizontally so it reads correctly from
-            # behind.  Sides reuse front/back UVs; they are 5 mm wide and
-            # edge-on from every legal view.
             uv="0 0 1 0 1 1 0 1 1 0 0 0 0 1 1 1"
             write_text_lf(path, '''<?xml version="1.0" encoding="utf-8"?>
 <COLLADA xmlns="http://www.collada.org/2005/11/COLLADASchema" version="1.4.1"><asset><unit name="meter" meter="1"/><up_axis>Z_UP</up_axis></asset>
@@ -149,19 +91,10 @@ def card(name, source, width, height, ground=False):
     (root / "meshes").mkdir(parents=True, exist_ok=True)
     (root / "materials/textures").mkdir(parents=True, exist_ok=True)
     with Image.open(source) as image:
-        # A white backing is deliberate: alpha handling differs between Ogre versions.
         if image.mode == "RGBA":
             backing = Image.new("RGBA", image.size, "white")
             backing.alpha_composite(image)
             image = backing.convert("RGB")
-        # Letterbox the artwork onto the board instead of stretching it.  The
-        # supplied artwork canvases have aspect ratios between 0.26 and 0.47
-        # while the board is a fixed 0.05 x 0.15 m (1:3).  Stretching distorts
-        # the local gradients, and ORB is rotation- and scale-invariant but NOT
-        # aspect-invariant, so reference matching degrades -- a 24 % squash on
-        # resident_1 was enough to make street_a_north time out.  Padding keeps
-        # the printed figure undistorted, which is also what a real printed
-        # board shows.
         if not ground and width > 0 and height > 0:
             target = float(width) / float(height)
             w, h = image.size
@@ -181,9 +114,6 @@ def card(name, source, width, height, ground=False):
     collision = ""
     support = ""
     if not ground:
-        # Model the artwork as a thin, real signboard rather than an
-        # infinitely thin visual plane.  The 5 mm thickness is conservative
-        # for a rigid printed board and is also visible to Gazebo physics/LiDAR.
         collision = '<collision name="card"><pose>0 0 %f 0 0 0</pose><geometry><box><size>%f %f %f</size></box></geometry></collision>' % (height/2,width,PERSON_THICKNESS_M,height)
         if name.startswith(("resident_", "visitor_")):
             support = ('<visual name="stand_base"><pose>0 0 %f 0 0 0</pose>'
@@ -205,20 +135,14 @@ def card(name, source, width, height, ground=False):
 
 PLATE_WIDTH_M = 0.095
 PLATE_HEIGHT_M = 0.03
-PLATE_IMAGE_SIZE = (380, 120)  # Exact 19:6 ratio, matching the official 9.5 x 3 cm.
+PLATE_IMAGE_SIZE = (380, 120)
 PLATE_LABELS = (("一", "苏AB8Q62", None),
                 (None, "苏DB812A", "random_1.png"),
                 (None, "鄂DP8522", "random_2.png"))
 
 
 def plate_artwork(source):
-    """Map the complete supplied plate to its physical aspect ratio.
-
-    Unlike a person printed inside a board, the plate itself occupies the
-    whole 9.5 x 3 cm rectangle. Do not add letterbox borders. Use this same
-    image for both rendering and feature matching, so their aspect ratios
-    and the metric PnP correspondences agree.
-    """
+    """将完整车牌图案映射到实际宽高比。"""
     with Image.open(source) as original:
         image = original.convert("RGBA")
         background = Image.new("RGBA", image.size, "white")
@@ -287,13 +211,6 @@ def main():
                                 "thickness_m": PERSON_THICKNESS_M,
                                 "dimension_status": "official_training_sheet"})
             card(name, source, width, PERSON_HEIGHT_M)
-    # The contest supplies three example plates and allows them to be used, but
-    # requires at least TWO plates to carry random numbers.  Plate 1 keeps the
-    # official example as a known reference; plates 2 and 3 come from
-    # assets/random_plates/ and are produced by tools/make_random_plates.py, so
-    # the scene holds one known and two unseen numbers.  Regenerating those two
-    # files changes the expected labels below, which is the point: the pipeline
-    # must not depend on having seen the number before.
     recognition.extend(build_plate_assets(args.materials))
     card("car_background",args.materials/"车辆识别/车牌背景.png",0.345,0.25)
     for colour,cn in [("red","红"),("yellow","黄"),("green","绿")]:
@@ -305,7 +222,6 @@ def main():
               "notes":["Known-reference baseline; plate labels are not OCR output.",
                        "Person height is a provisional reconstruction value; verify before filming.",
                        "No person roles inferred from clothing colour."]})
-    # Dimensioned geometry. Coordinates are metres, origin at bottom-left.
     a_polygon = [[0.6,3.6],[2.85,3.6],[2.85,0.6],[2.25,0.6],[2.25,3.0],[0.6,3.0]]
     b_polygon = [[0.6,0.6],[1.65,0.6],[1.65,2.25],[0.6,2.25]]
     route = [
@@ -314,15 +230,12 @@ def main():
         {"name":"past_light_1","xy":[1.45,3.90],"yaw":180},
         {"name":"street_a_north","xy":[0.90,3.90],"yaw":-90,"street":"A","observe":True,"expected_category":"person"},
         {"name":"top_left","xy":[0.30,3.90],"yaw":180},
-        # Offset the west observation by 10 cm so the two west-facing cards
-        # in the A row are not collinear in the camera projection.
         {"name":"street_a_west","xy":[0.30,3.07],"yaw":0,"street":"A","observe":True,"expected_category":"person"},
         {"name":"left_bottom","xy":[0.30,2.63],"yaw":-90},
         {"name":"street_b_west","xy":[0.96,2.63],"yaw":-90,"street":"B","observe":True,"expected_category":"person"},
         {"name":"street_a_south","xy":[1.36,2.63],"yaw":90,"street":"A","observe":True,"expected_category":"person"},
         {"name":"street_b_east","xy":[1.36,2.63],"yaw":-90,"street":"B","observe":True,"expected_category":"person"},
         {"name":"inner_turn","xy":[1.95,2.63],"yaw":0},
-        # A legal lane pose with a more normal view of the east-facing card.
         {"name":"street_b_east_side","xy":[1.95,2.30],"yaw":-110,"street":"B","observe":True,"expected_category":"person"},
         {"name":"approach_light_2","xy":[1.95,1.82],"yaw":-90,"gate":"light_2"},
         {"name":"past_light_2","xy":[1.95,0.78],"yaw":-90},
@@ -384,35 +297,6 @@ def main():
            '<physics type="ode"><max_step_size>0.001</max_step_size><real_time_update_rate>200</real_time_update_rate></physics>',
            '<include><uri>model://sun</uri></include><include><uri>model://ground_plane</uri></include>',
            '<include><uri>model://official_floor</uri><pose>0 0 0.002 0 0 0</pose></include>']
-    # Low static masses inside the no-drive islands provide real lidar returns
-    # and map structure while staying clear of lanes, stop lines, and cards.
-    # This set REPLACES the two earlier boxes (building_a / building_b): those
-    # had never been re-audited after the population grew to 16 and they changed
-    # left_free 45/4000 and right_free 62/4000 on the inner_turn ->
-    # street_b_east_side -> approach_light_2 segment.  The A-block east wall is
-    # therefore shortened to y<=2.18 so it leaves that forward window, and the
-    # B-block mass is grown to give the map real structure.  bld_parking_wall
-    # sits behind every car card (x>=3.91 vs cards at 3.84), so it can never
-    # occlude a plate.  Every extent below is accepted by
-    # _诊断工具/audit17_lidar_neutrality.py (gate 0 clear of all cards,
-    # gate 1 outside every swept legal footprint, gate 2 forward_obstacle /
-    # left_free / right_free unchanged at 4000 poses x 2 speeds).
-    # The training deck requires the map to carry a wall that ENCLOSES the
-    # track and is visible to the robot's lidar ("厚度 0.5cm，高度 50cm 左右"),
-    # so SLAM has a closed boundary to build against.  The walls sit OUTSIDE
-    # the 4.2 m field with their inner faces exactly on the field edge, are
-    # 5 mm thick and 0.50 m tall -- tall enough for the laser plane at z=0.125 m
-    # to hit, thin enough not to occlude the camera.  They are appended to the
-    # same validated list below, so audit17_lidar_neutrality.py still proves
-    # they change no forward_obstacle / left_free / right_free decision.
-    # The wall must sit OUTSIDE the swept legal envelope plus the guard's
-    # sensitivity window, otherwise it reads as a side obstacle along the whole
-    # top lane.  The top lane centre is y=3.90 and the guard watches
-    # |lateral| <= 0.2735 m from the robot, which itself may sit 0.28 m off
-    # centre -- so the inner face has to be at least 4.454 m out.  0.40 m of
-    # stand-off (inner face at 4.600 m) clears that with 0.15 m to spare, and
-    # a scan of all 5037 legal poses reports zero change to forward_obstacle,
-    # left_free and right_free versus the same scene without the walls.
     FIELD_WALL_T = 0.005
     FIELD_WALL_H = 0.50
     FIELD_M_ = 4.2
@@ -436,22 +320,12 @@ def main():
     def include(model,name,x,y,yaw,z=0.003):
         world.append('<include><uri>model://%s</uri><name>%s</name><pose>%f %f %f 0 0 %f</pose></include>'%(model,name,x,y,z,yaw))
         instances.append({"model":model,"name":name,"x":x,"y":y,"z":z,"yaw":yaw})
-    # Card front is local -Y. The official arrows are treated as allowed
-    # viewing directions: A has north/south/west and B has north/east. Keep
-    # the corresponding observation poses in the route so no card is forced
-    # to be read from its mirrored back face.
     person_instances=[
-        # A (top island): two north-facing, three south-facing and three
-        # west-facing cards, matching the three legal directions shown by
-        # the official arrow mark.
         ("resident_1",.70,3.18,math.pi),("resident_7",.86,3.18,math.pi),
         ("resident_3",1.02,3.18,-math.pi/2),
-        # Keep the full 16-person inventory, but separate this west-facing
-        # card from the adjacent row so its only legal view is not occluded.
         ("resident_4",1.08,3.10,-math.radians(140)),
         ("visitor_F1",1.08,3.40,0),("resident_10",1.25,3.40,0),
         ("resident_5",1.42,3.40,-math.pi/2),("resident_16",1.59,3.40,0),
-        # B (lower island): five north-facing and three east-facing cards.
         ("resident_2",.76,1.95,math.pi),("resident_6",.96,1.95,math.pi),
         ("resident_9",1.15,1.95,math.pi),("visitor_F2",1.36,1.95,math.pi),
         ("resident_14",1.54,1.95,math.pi),
@@ -462,43 +336,16 @@ def main():
     for i,y in enumerate([.30,.92,1.54],1):
         include("car_background","car_%d"%i,3.84,y,-math.pi/2)
         include("plate_%d"%i,"plate_%d"%i,3.833,y,-math.pi/2,.073)
-    # Horizontal three-lamp housings. A renderer plugin sets emissive active colours.
     for lamp in lights:
         name=lamp["id"];x,y=lamp["xy"];yaw=math.radians(lamp["yaw"])
         parts=['<model name="%s"><static>true</static><pose>%f %f 0 0 0 %f</pose><link name="housing">'%(name,x,y,yaw)]
         parts.append('<visual name="box"><pose>0 0 .41 0 0 0</pose><geometry><box><size>.64 .05 .14</size></box></geometry><material><ambient>.02 .02 .02 1</ambient><diffuse>.02 .02 .02 1</diffuse></material></visual>')
         for colour,lx,rgb in [("red",-.22,"1 0 0 1"),("yellow",0,"1 .7 0 1"),("green",.22,"0 1 0 1")]:
             parts.append('<visual name="%s"><pose>%f -.025 .41 1.570796 0 0</pose><geometry><cylinder><radius>.052</radius><length>.012</length></cylinder></geometry><material><ambient>%s</ambient><diffuse>%s</diffuse></material></visual>'%(colour,lx,rgb,rgb))
-        # Legs sit at the ends of the .64 m housing.  The offset is set by the
-        # guard's lateral sensitivity, not by looks: scan_clearance treats
-        # |lateral| <= body_half_width + SIDE_SAFETY = 0.2735 m as its side
-        # corridor, and light_2 stands on the x = 1.95 lane centreline while
-        # light_1 straddles the y = 3.90 one.  At +/-0.29 the leg centre is
-        # 0.29 from the lane centre, so its inner face at 0.2775 sits only
-        # 4 mm inside that corridor and 2.6% of every legal lane pose (133 of
-        # 5037, all of them this pair of legs) reads a phantom forward
-        # obstacle -- a false avoid that can stall a lap.  At +/-0.32 the inner
-        # face clears the corridor by 34 mm, which is the whole point of the
-        # 3 cm.  Do not reduce it again; verify with
-        # 比赛交付物/_诊断工具/leg_false_trigger.py, which prints the false
-        # trigger count and blames each one on a single object.
-        #
-        # Residual, located but not fixed: light_2's east leg sits at y=0.56,
-        # inside the bottom lane's legal corridor [0.02, 0.58], so the 99
-        # remaining hits all come from it and cluster in the bottom-right turn.
-        # Its lateral offset is set by that y difference (0.26 m), which an x
-        # shift cannot change; clearing it entirely needs the lamp at
-        # y >= 0.776, which collides with past_light_2 (y=0.78).  That is a
-        # layout redesign, not a one-line change.
         for lx in [-.32,.32]:
             parts.append('<visual name="leg_%s"><pose>%f 0 .17 0 0 0</pose><geometry><box><size>.025 .025 .34</size></box></geometry></visual><collision name="leg_%s"><pose>%f 0 .17 0 0 0</pose><geometry><box><size>.025 .025 .34</size></box></geometry></collision>'%(lx,lx,lx,lx))
         offset = float(SIGNAL_CYCLE["offsets_s"][name])
         parts.append('</link><plugin name="signal_cycle" filename="libsemifinal_signal.so"><offset>%s</offset><period>%s</period><red>%s</red><green>%s</green></plugin></model>' % (offset, SIGNAL_CYCLE["period_s"], SIGNAL_CYCLE["red_s"], SIGNAL_CYCLE["green_s"]));world.extend(parts)
-    # The official floor artwork is a dark board whose corner sits at the world
-    # origin, so Gazebo's default user camera (aimed at the origin) shows an
-    # almost featureless dark frame.  Aim the client camera at the field centre
-    # instead.  This is a display-only setting: it does not affect physics,
-    # sensors, or any measured quantity.
     world.append('<gui fullscreen="0"><camera name="user_camera">'
                  '<pose frame="">%f %f %f 0 %f %f</pose>'
                  '<view_controller>orbit</view_controller>'

@@ -1,10 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""Locate a lit circular lamp and verify its dark horizontal housing in pixels.
-
-The projected static installation only limits search; no simulator lamp state is
-read. A failed/ambiguous visual candidate never becomes a permissive signal.
-"""
+"""定位亮起的圆形灯，并验证深色横向灯壳。"""
 from __future__ import division, unicode_literals
 import math
 import cv2,numpy as np
@@ -19,9 +15,6 @@ def locate_signal(frame,hint,geometry=None):
     hint_cx=x+w/2.;hint_cy=y+h/2.
     crop=frame[ya:yb,xa:xb];hsv=cv2.cvtColor(crop,cv2.COLOR_BGR2HSV)
     hue,sat,val=cv2.split(hsv)
-    # Yellow LEDs can be nearly white after Gazebo/VM rendering.  Keep a
-    # bounded saturation floor; the dark housing and ambiguity checks below
-    # remain mandatory, so this is not a full-frame colour shortcut.
     mask=(((hue<=16)|(hue>=170)|((hue>=14)&(hue<95)))&
           (sat>70)&(val>150)).astype(np.uint8)*255
     candidates=[]
@@ -41,9 +34,6 @@ def locate_signal(frame,hint,geometry=None):
         rw=rw_ratio*diameter;rh=rh_ratio*diameter
         rx=int(centre-rw/2);ry=int(cy-rh/2);rw=int(rw);rh=int(rh)
         if rx<0 or ry<0 or rx+rw>=frame.shape[1] or ry+rh>=frame.shape[0]:continue
-        # AMCL/map projection can be off by several pixels at the approach
-        # waypoint.  Keep the active-stop projection as the search prior, but
-        # tolerate a bounded error rather than dropping every visual frame.
         if abs(centre-hint_cx)>max(45,.65*w) or abs(cy-hint_cy)>max(32,.75*h):continue
         grey=cv2.cvtColor(frame[ry:ry+rh,rx:rx+rw],cv2.COLOR_BGR2GRAY)
         dark=float((grey<85).sum())/grey.size
@@ -57,9 +47,6 @@ def locate_signal(frame,hint,geometry=None):
     candidates.sort(key=lambda item:(item['hint_distance'],
                                      -item['dark_housing_fraction'],
                                      -item['area']))
-    # A nearest candidate is safe only when it is meaningfully closer than the
-    # runner-up.  Ambiguous visual evidence remains unknown and is handled by
-    # the traffic fail-safe instead of guessing between lamps.
     if (len(candidates)>1 and
             candidates[1]['hint_distance']-candidates[0]['hint_distance']<.08):
         return None

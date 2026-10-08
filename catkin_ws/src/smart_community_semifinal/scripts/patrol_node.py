@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""Minimal ordered-route ROS controller with observations and visual gates."""
+"""巡检控制节点，处理路线、观测和路口通行。"""
 from __future__ import division, unicode_literals
 import io,json,threading,time
 import rospy,tf
@@ -55,9 +55,6 @@ class Task(object):
                     xyz,q=self.listener.lookupTransform('map','base_footprint',stamp)
                     pose=(xyz[0],xyz[1],tf.transformations.euler_from_quaternion(q)[2])
                     guard=dict(self.guard)
-                    # An absent or stale guard is an explicit safety hold.
-                    # Passing {} would make the core believe the scene is
-                    # clear and would also consume its stall watchdog.
                     if (not guard.get('guard_valid',False) or
                             not 0<=now-guard.get('stamp',-1)<.3):
                         guard={'safety_hold':True,'guard_valid':False,
@@ -67,9 +64,6 @@ class Task(object):
                     command.linear.x=speed;command.linear.y=lateral;command.angular.z=omega
                 except (tf.Exception,ValueError) as exc:
                     reason=str(exc)
-                    # Localization loss is a safety hold, not route progress.
-                    # Advance neither the stall watchdog nor the avoidance
-                    # deadline while waiting for TF to recover.
                     self.core.step((0.,0.,0.),now,guard={'safety_hold':True})
                 target=self.core.target
                 context_id='%d:%s'%(self.core.index,target['name'])
@@ -87,14 +81,9 @@ class Task(object):
                 self.status.publish(String(data=json.dumps({'index':self.core.index,'target':target['name'],'phase':self.core.phase,'error':self.core.error or reason,'stamp':now})))
                 if self.core.phase in ('done','failed'):
                     rospy.loginfo('Patrol result: %s'%self.core.phase)
-                    # Keep the final status available; do not hold the callback lock.
                     break
-            # A ROS Rate waits on /clock and cannot service wall watchdogs
-            # when the simulator pauses. Keep control/status on wall time.
             time.sleep(.05)
         if not rospy.is_shutdown():
-            # Do not leave a stale stop-line policy latched after either a
-            # successful route or an explicit failure.
             self.command.publish(Twist())
             self.stop.publish(String(data='{"mode":"clear"}'))
             rospy.spin()

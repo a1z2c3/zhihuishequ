@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Contract tests + measured synthetic-artwork benchmark. Not Gazebo validation."""
+"""运行契约测试和合成图案评测，不代替仿真实测。"""
 import argparse
 import ast
 import json

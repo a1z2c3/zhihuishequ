@@ -1,12 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""Move-base waypoint client for the optional standard navigation chain.
-
-This node owns goals and, while waiting at a visual gate, publishes only a
-neutral request to keep the guard's command-freshness watchdog alive.  It
-never publishes ``/cmd_vel``; traffic, scan freshness and body geometry
-remain enforced by one physical velocity arbiter.
-"""
+"""按巡检路线发送导航目标。"""
 from __future__ import division, unicode_literals
 import io,json,math,threading,time
 import actionlib
@@ -57,9 +51,6 @@ class WaypointClient(object):
         self.stop.publish(String(data='{"mode":"clear"}'))
 
     def publish_context(self,item,active,stamp,index,context_id):
-        # Arm perception only after move_base reports that the goal is reached.
-        # Frames acquired while driving to the waypoint are never evidence for
-        # that observation point.
         data={'active':bool(active),'view':item['name'],
               'street':item.get('street'),'stamp':stamp,'armed_at':stamp,
               'warmup_s':.35 if active else 0.,'context_id':context_id,
@@ -128,13 +119,7 @@ class WaypointClient(object):
         rospy.logerr(error)
 
     def wait_gate_entry(self,gate,started_at):
-        """Wait at an approach waypoint before dispatching the crossing goal.
-
-        The guard remains the sole velocity authority.  This client only
-        prevents move_base from holding a red-light crossing goal active,
-        which would otherwise trip controller_patience while the robot is
-        correctly stopped at the line.
-        """
+        """等待通行许可后再发送越线目标。"""
         sim_timeout=float(rospy.get_param('~gate_wait_timeout',90.0))
         wall_timeout=float(rospy.get_param('~gate_wait_wall_timeout',600.0))
         sim_start=float(started_at);wall_start=monotonic()
@@ -143,9 +128,6 @@ class WaypointClient(object):
         self.status.publish(String(data=json.dumps({'phase':'gate_wait','gate':gate,
                                                      'stamp':rospy.Time.now().to_sec()})))
         while not rospy.is_shutdown():
-            # The approach goal is already succeeded, so move_base may stop
-            # publishing its zero command.  Keep the request channel fresh
-            # without bypassing the guard's physical /cmd_vel arbiter.
             now=rospy.Time.now().to_sec()
             with self.lock:guard=dict(self.last_guard or {})
             if gate_entry_ready(guard,gate,now):
@@ -153,9 +135,6 @@ class WaypointClient(object):
                                                              'gate':gate,'stamp':now})))
                 return True
             request=Twist()
-            # If the guard is healthy and the robot is still before the line,
-            # sweep the camera with a bounded in-place yaw. This never moves
-            # through the gate; stale/held/recovery states remain zero-speed.
             fresh=(guard.get('guard_valid',False) and
                    not guard.get('safety_hold',False) and
                    not guard.get('lane_recovery',False) and
@@ -191,10 +170,6 @@ class WaypointClient(object):
             if state!=GoalStatus.SUCCEEDED:
                 self.stop.publish(String(data='{"mode":"clear"}'))
                 self.fail('goal_failed:%s:%s'%(item['name'],state),index,item);return
-            # A gate waypoint is the stop-line approach.  Do not dispatch the
-            # following past-light goal until the fresh guard permit matches
-            # this gate; otherwise move_base can abort during a normal red
-            # phase after controller_patience expires.
             if item.get('gate'):
                 if not self.wait_gate_entry(item['gate'],rospy.Time.now().to_sec()):
                     self.goals.cancel_all_goals()
