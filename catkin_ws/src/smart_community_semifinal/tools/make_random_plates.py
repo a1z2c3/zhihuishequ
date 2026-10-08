@@ -15,7 +15,7 @@
 `PlateCharacterRecognizer` 把车牌按宽度比例切成 7 个固定槽位（`SLOTS`），每个
 槽位再与"在该槽位出现过的字符"的模板比对。因此只要**每个新字符都从"它原本被
 正确识别过的那张官方牌的同一个槽位"剪出来**，字体、字号、位置就完全一致，
-OCR 必然能读，而号码是新的。
+生成后仍须经过 OCR 自检，确认新号码可被完整读出。
 
 约束：只能用官方三张牌里已经出现过的字符（共 14 个），所以新号码是这 14 个字符
 的新组合，而不是全新字形。这满足"随机号码"的要求；若日后要引入全新字形，必须
@@ -27,7 +27,7 @@ OCR 必然能读，而号码是新的。
     python tools/make_random_plates.py --seed 1234    # 换一组组合
     python tools/make_random_plates.py --picks 二,二,一,三,二,二,一 --index 1
 
-生成后必须把新号码同步到 `build_official_scene.py` 的 `plate_labels` 与路线里的
+生成后必须把新号码同步到 `build_official_scene.py` 的 `PLATE_LABELS` 与路线里的
 `expected_label`，否则评价器会认为车牌不匹配（脚本会打印可直接粘贴的行）。
 """
 from __future__ import print_function
@@ -92,8 +92,12 @@ def random_picks(bank, rng):
 
 
 def compose(plates, picks):
-    """按槽位从来源牌剪贴，拼出一张新牌。"""
-    out = np.zeros((Recognizer.HEIGHT, Recognizer.WIDTH, 3), np.uint8)
+    """保留完整牌面底图，再替换七个字符槽位。
+
+    OCR 槽位不覆盖边框和第二、第三字符之间的圆点。不能用黑色画布
+    起步，否则这些未覆盖的列会留下贯穿牌面高度的黑缝。
+    """
+    out = plates[picks[0][1]][0].copy()
     bounds = slot_pixels()
     for index, (_char, source) in enumerate(picks):
         x0, x1 = bounds[index]
@@ -131,26 +135,36 @@ def main(argv=None):
     # 自检：生成的牌必须能被本项目 OCR 完整读出，否则不要采用
     recognizer = Recognizer([(plates[k][0][:, :, ::-1], plates[k][1])
                              for k, _f, _t in EXAMPLES])
-    written = []
+    prepared = []
     for idx, picks in jobs:
         label = "".join(char for char, _src in picks)
         image = compose(plates, picks)
-        path = os.path.join(OUT_DIR, "random_%d.png" % idx)
-        cv2.imencode(".png", cv2.cvtColor(image, cv2.COLOR_RGB2BGR))[1].tofile(path)
         result = recognizer.recognize(cv2.cvtColor(image, cv2.COLOR_RGB2GRAY))
         ok = result["complete"] and result["text"] == label
         print("  random_%d.png  %-10s  OCR=%s  %s"
               % (idx, label, result["text"], "OK" if ok else "FAIL"))
         if not ok:
-            print("     [警告] 自身 OCR 读不完整，不要采用这张")
+            print("     [警告] 自身 OCR 读不完整；未覆盖现有素材")
+        prepared.append((idx, label, ok, image))
+
+    if not all(ok for _i, _l, ok, _image in prepared):
+        return 1
+    written = []
+    for idx, label, ok, image in prepared:
+        path = os.path.join(OUT_DIR, "random_%d.png" % idx)
+        encoded_ok, encoded = cv2.imencode(".png", cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
+        if not encoded_ok:
+            raise IOError("PNG encoding failed: " + path)
+        encoded.tofile(path)
         written.append((idx, label, ok))
 
     print()
     print("  已写入 %s" % OUT_DIR)
     print("  同步到 build_official_scene.py：")
-    print('      plate_labels = [("一", "苏AB8Q62", None),')
+    print('      PLATE_LABELS = (("一", "苏AB8Q62", None),')
     for idx, label, _ok in written:
         print('                      (None, "%s", "random_%d.png"),' % (label, idx))
+    print('                     )')
     print("  并把路线里的 expected_label 改成同样的号码。")
     return 0 if all(ok for _i, _l, ok in written) else 1
 

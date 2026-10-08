@@ -11,6 +11,7 @@ python -c 'import sys, rospy, tf, cv2, numpy, PIL; assert sys.version_info[:2] =
 python catkin_ws/src/smart_community_semifinal/tools/test_runtime.py
 python catkin_ws/src/smart_community_semifinal/tools/test_lane_geometry.py
 python catkin_ws/src/smart_community_semifinal/tools/test_plate_ocr.py
+python catkin_ws/src/smart_community_semifinal/tools/test_plate_artwork.py
 python catkin_ws/src/smart_community_semifinal/tools/test_perception_contracts.py
 python catkin_ws/src/smart_community_semifinal/tools/test_obstacle_closed_loop.py
 python catkin_ws/src/smart_community_semifinal/tools/test_plan_route.py

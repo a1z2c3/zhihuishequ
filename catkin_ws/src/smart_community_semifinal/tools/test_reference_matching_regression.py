@@ -21,8 +21,11 @@ teaching VM's older OpenCV.
 """
 from __future__ import division, print_function, unicode_literals
 import io
+import json
 import os
+import shutil
 import sys
+import tempfile
 import unittest
 
 PKG = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -50,6 +53,28 @@ class ReferenceMatchingContracts(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.detector = ReferenceDetector(MANIFEST)
+        # The recorded plate fixture predates the official-aspect repair.
+        # Keep its original reference pixels and original >=40-inlier gate;
+        # comparing the old narrow artwork with the new wider one would test
+        # a deliberate aspect mismatch instead of an algorithm regression.
+        # Current geometry/matching/PnP is covered by test_plate_artwork.py.
+        with io.open(MANIFEST, encoding='utf-8') as stream:
+            historical = json.load(stream)
+        for row in historical['recognition_assets']:
+            row['file'] = os.path.join(PKG, 'assets', row['file'])
+            if row['category'] == 'plate' and row['label'] == '苏AB8Q62':
+                row['file'] = os.path.join(PKG, 'tools', 'fixtures', 'official_plates',
+                                          'plate_example_1.png')
+                row.pop('reference_sha256', None)
+        cls.historical_dir = tempfile.mkdtemp(prefix='plate_fixture_reference_')
+        historical_path = os.path.join(cls.historical_dir, 'manifest.json')
+        with io.open(historical_path, 'w', encoding='utf-8') as stream:
+            stream.write(json.dumps(historical, ensure_ascii=False))
+        cls.historical_detector = ReferenceDetector(historical_path)
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.historical_dir)
 
     def test_real_person_frame_still_matches(self):
         """A real person view must keep producing inliers, not silence.
@@ -80,7 +105,7 @@ class ReferenceMatchingContracts(unittest.TestCase):
     def test_real_plate_frame_still_matches(self):
         image = load('plate_view_a.png')
         self.assertIsNotNone(image, 'plate fixture missing')
-        got = self.detector.detect(image, categories=('plate',))
+        got = self.historical_detector.detect(image, categories=('plate',))
         labels = set(d['label'] for d in got)
         self.assertTrue(labels <= PLATE_FRAME_TRUTH,
                         'spurious plate labels: %s' % sorted(labels))

@@ -203,12 +203,72 @@ def card(name, source, width, height, ground=False):
     write_text_lf(root / "model.config", '<model><name>%s</name><version>1.0</version><sdf version="1.6">model.sdf</sdf><description>Official artwork; dimensions tracked in manifest</description></model>' % name)
 
 
+PLATE_WIDTH_M = 0.095
+PLATE_HEIGHT_M = 0.03
+PLATE_IMAGE_SIZE = (380, 120)  # Exact 19:6 ratio, matching the official 9.5 x 3 cm.
+PLATE_LABELS = (("一", "苏AB8Q62", None),
+                (None, "苏DB812A", "random_1.png"),
+                (None, "鄂DP8522", "random_2.png"))
+
+
+def plate_artwork(source):
+    """Map the complete supplied plate to its physical aspect ratio.
+
+    Unlike a person printed inside a board, the plate itself occupies the
+    whole 9.5 x 3 cm rectangle. Do not add letterbox borders. Use this same
+    image for both rendering and feature matching, so their aspect ratios
+    and the metric PnP correspondences agree.
+    """
+    with Image.open(source) as original:
+        image = original.convert("RGBA")
+        background = Image.new("RGBA", image.size, "white")
+        background.alpha_composite(image)
+        return background.convert("RGB").resize(PLATE_IMAGE_SIZE, Image.LANCZOS)
+
+
+def build_plate_assets(materials):
+    assets = PKG / "assets"
+    recognition = []
+    for i, (cn, text, random_file) in enumerate(PLATE_LABELS, 1):
+        if random_file:
+            source = assets / "random_plates" / random_file
+            origin = "assets/random_plates/" + random_file
+            txt_status = "randomly_generated"
+        else:
+            source = materials / "车辆识别" / ("车牌" + cn + ".png")
+            origin = str(source.relative_to(materials))
+            txt_status = "visually_transcribed"
+        name = "plate_%d" % i
+        target = assets / (name + ".png")
+        plate_artwork(source).save(target)
+        recognition.append({"category": "plate", "label": text, "file": target.name,
+                            "source": origin,
+                            "sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+                            "reference_sha256": hashlib.sha256(target.read_bytes()).hexdigest(),
+                            "width_m": PLATE_WIDTH_M, "height_m": PLATE_HEIGHT_M,
+                            "artwork_width_m": PLATE_WIDTH_M,
+                            "artwork_height_m": PLATE_HEIGHT_M,
+                            "dimension_status": "official_text", "text_status": txt_status})
+        card(name, target, PLATE_WIDTH_M, PLATE_HEIGHT_M)
+    return recognition
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--materials", required=True, type=Path)
+    parser.add_argument("--plates-only", action="store_true",
+                        help="Refresh plate references, models and manifest only; keep scene/persons/maps unchanged")
     args = parser.parse_args()
     assets = PKG / "assets"
     assets.mkdir(parents=True, exist_ok=True)
+    if args.plates_only:
+        manifest_path = assets / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        plates = build_plate_assets(args.materials)
+        manifest["recognition_assets"] = [row for row in manifest["recognition_assets"]
+                                          if row["category"] != "plate"] + plates
+        save_json(manifest_path, manifest)
+        return
     recognition = []
     for category, subdir, prefix in [("resident","社区人员","resident"),("visitor","非社区人员","visitor")]:
         for source in sorted((args.materials / "人员" / subdir).glob("*.png")):
@@ -234,30 +294,7 @@ def main():
     # the scene holds one known and two unseen numbers.  Regenerating those two
     # files changes the expected labels below, which is the point: the pipeline
     # must not depend on having seen the number before.
-    plate_labels = [("一", "苏AB8Q62", None),
-                    (None, "苏DB812A", "random_1.png"),
-                    (None, "鄂DP8522", "random_2.png")]
-    for i, (cn, text, random_file) in enumerate(plate_labels, 1):
-        if random_file:
-            source = PKG / "assets" / "random_plates" / random_file
-            origin = "assets/random_plates/" + random_file
-            dim_status, txt_status = "official_text", "randomly_generated"
-        else:
-            source = args.materials / "车辆识别" / ("车牌" + cn + ".png")
-            origin = str(source.relative_to(args.materials))
-            dim_status, txt_status = "official_text", "visually_transcribed"
-        name = "plate_%d" % i
-        shutil.copy2(str(source), str(assets / (name+".png")))
-        with Image.open(source) as image:
-            artwork_width, artwork_height = artwork_dimensions(image.size, 0.095, 0.03)
-        recognition.append({"category":"plate", "label":text,"file":name+".png",
-                            "source":origin,
-                            "sha256":hashlib.sha256(source.read_bytes()).hexdigest(),
-                            "width_m":0.095,"height_m":0.03,
-                            "artwork_width_m": artwork_width,
-                            "artwork_height_m": artwork_height,
-                            "dimension_status":dim_status, "text_status":txt_status})
-        card(name,source,0.095,0.03)
+    recognition.extend(build_plate_assets(args.materials))
     card("car_background",args.materials/"车辆识别/车牌背景.png",0.345,0.25)
     for colour,cn in [("red","红"),("yellow","黄"),("green","绿")]:
         for state,label in [("on","亮"),("off","暗")]:
